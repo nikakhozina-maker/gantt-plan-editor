@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Gantt Plan Editor — AI-Native</title>
+<title>Repka Project</title>
 <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js">
 </script>
 <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js">
@@ -46,7 +46,11 @@ body.light-theme{
 .btn-xs{padding:3px 8px;font-size:0.7rem;border-radius:4px}
 
 /* Layout */
-.main{display:flex;flex:1;overflow:hidden}
+.main{display:flex;flex:1;overflow:hidden;position:relative}
+/* Chat toggle tab — outside chat-panel, always visible */
+.chat-toggle-tab{position:absolute;top:50%;transform:translateY(-50%);width:28px;height:80px;background:var(--surface);border:1px solid var(--border);border-radius:8px 0 0 8px;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:20;font-size:0.78rem;color:var(--text2);font-weight:600;transition:right 0.3s ease,background 0.2s,color 0.2s;user-select:none;right:420px}
+.chat-toggle-tab:hover{background:var(--accent);color:#fff}
+.chat-toggle-tab.collapsed{right:0;border-radius:8px 0 0 8px}
 .gantt-panel{flex:1;overflow:hidden;display:flex;flex-direction:column}
 .gantt-toolbar{display:flex;align-items:center;gap:12px;padding:10px 20px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;font-size:0.82rem;color:var(--text2)}
 .gantt-toolbar .toggle-group{display:flex;gap:4px;margin-left:12px}
@@ -60,7 +64,7 @@ body.light-theme{
 /* Gantt */
 .gantt-header{display:flex;background:var(--surface2);border-bottom:2px solid var(--border)}
 .gantt-body{position:relative}
-.gantt-row{display:flex;align-items:stretch;cursor:pointer;transition:background 0.15s;min-height:36px;border-bottom:1px solid rgba(45,49,72,0.4)}
+.gantt-row{display:flex;align-items:stretch;cursor:pointer;transition:background 0.15s, transform 0.3s ease;min-height:36px;border-bottom:1px solid rgba(45,49,72,0.4)}
 .gantt-row:hover{background:rgba(108,92,231,0.08)}
 .gantt-row.selected{background:rgba(108,92,231,0.18);outline:1px solid var(--accent);outline-offset:-1px}
 .gantt-cell{padding:6px 10px;display:flex;align-items:center;font-size:0.8rem;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;position:relative;z-index:1;background:var(--surface)}
@@ -124,7 +128,10 @@ body.light-theme .gantt-cell.assignee .badge{color:#374151;background:#e5e7eb;bo
 .badge.active{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
 
 /* Chat */
-.chat-panel{width:420px;min-width:360px;border-left:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column;flex-shrink:0}
+.chat-panel{width:420px;min-width:360px;border-left:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column;flex-shrink:0;transition:width 0.3s ease,min-width 0.3s ease,margin 0.3s ease,opacity 0.3s ease;position:relative}
+.chat-panel.collapsed{width:0;min-width:0;border-left:none;overflow:hidden;opacity:0;padding:0;margin:0}
+/* Chat toggle tab — fixed so it stays visible when panel is collapsed */
+
 .chat-header{padding:14px 18px;border-bottom:1px solid var(--border);font-weight:600;font-size:0.9rem;display:flex;align-items:center;gap:8px;flex-shrink:0}
 .chat-header .dot{width:8px;height:8px;border-radius:50%;background:var(--green)}
 .chat-msgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px}
@@ -176,6 +183,8 @@ body.light-theme .gantt-cell.assignee .badge{color:#374151;background:#e5e7eb;bo
 .dep-add-row select,.dep-add-row input{flex:1;min-width:80px;padding:7px 9px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:0.78rem;outline:none;font-family:inherit}
 .dep-add-row select:focus,.dep-add-row input:focus{border-color:var(--accent)}
 .dep-add-row input[type=number]{width:55px;flex:0 0 auto}
+input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+input[type=number]{-moz-appearance:textfield}
 .dep-legend{display:flex;gap:10px;font-size:0.68rem;color:var(--text2);flex-wrap:wrap}
 .dep-legend span{display:flex;align-items:center;gap:3px}
 .dep-legend .dot{width:10px;height:10px;border-radius:2px;display:inline-block}
@@ -1104,8 +1113,15 @@ depPaths.push({
             const isCrit = false;
             const isCompleted = !!t.completed;
             
-            // Count dependencies for display
+            // Lock icon: задача заблокирована, если есть незавершённые предшественники
             const incomingDeps = dependencies ? dependencies.filter(d => d.to_task_id === t.id) : [];
+            const blockedBy = incomingDeps.filter(d => {
+              const pred = tasks.find(tt => tt.id === d.from_task_id);
+              return pred && !pred.completed;
+            });
+            const isLocked = !isCompleted && blockedBy.length > 0;
+            
+            // Count dependencies for display
             const depDisplay = incomingDeps.length > 0 
               ? incomingDeps.map(d => {
                   const from = tasks.find(tt => tt.id === d.from_task_id);
@@ -1135,6 +1151,19 @@ depPaths.push({
                       opacity: isCompleted ? 0.82 : 1,
                     }} title={t.task + ': ' + t.start_date + ' → ' + t.end_date + (isCrit ? ' [КРИТ. ПУТЬ]' : '')}>
                       {bw > 50 ? t.task : ''}
+                      {isLocked && (
+                        <span style={{
+                          position: 'absolute', top: -4, right: -4,
+                          width: 18, height: 18, borderRadius: '50%',
+                          background: 'var(--surface)', border: '1.5px solid var(--yellow)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: '0.6rem', color: 'var(--yellow)',
+                          zIndex: 3, boxShadow: '0 1px 4px rgba(0,0,0,0.3)',
+                        }} title={`Заблокирована: ${blockedBy.map(d => {
+                          const p = tasks.find(tt => tt.id === d.from_task_id);
+                          return p ? p.task : d.from_task_id;
+                        }).join(', ')}`}>🔒</span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1156,6 +1185,9 @@ function TaskModal({ task, allTasks, dependencies, onClose, onSave, onDelete, on
   const [confirmDel, setConfirmDel] = useState(false);
   const [newDepType, setNewDepType] = useState("FS");
   const [newDepTo, setNewDepTo] = useState("");
+  const [showLinkInput, setShowLinkInput] = useState(false);
+  const [linkInputValue, setLinkInputValue] = useState('');
+  const linkInputRef = useRef(null);
 
   useEffect(() => {
     const t = {...task};
@@ -1224,7 +1256,7 @@ function TaskModal({ task, allTasks, dependencies, onClose, onSave, onDelete, on
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <span>✏️ Редактирование задачи</span>
+          <span>✏️ Редактирование задач</span>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
@@ -1288,7 +1320,7 @@ function TaskModal({ task, allTasks, dependencies, onClose, onSave, onDelete, on
           
           {/* Links section */}
           <div className="form-group">
-            <label>Ссылка на задачу</label>
+            <label>Полезные ссылки</label>
             <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
               {(form.links || []).map((link, idx) => (
                 <span key={idx} style={{display:'inline-flex',alignItems:'center',gap:3,fontSize:'0.78rem',
@@ -1308,12 +1340,38 @@ function TaskModal({ task, allTasks, dependencies, onClose, onSave, onDelete, on
                 </span>
               ))}
               <button className="btn btn-xs" style={{fontSize:'0.75rem',padding:'3px 8px'}} 
-                      onClick={() => {
-                        const url = prompt('Введите ссылку:');
-                        if (url && url.trim()) {
-                          setForm({...form, links: [...(form.links || []), url.trim()]});
-                        }
-                      }}>+</button>
+                      onClick={() => { setShowLinkInput(true); setLinkInputValue(''); }}
+                >+</button>
+              {showLinkInput && (
+                <span style={{display:'inline-flex',alignItems:'center',gap:4}}>
+                  <input
+                    ref={linkInputRef}
+                    value={linkInputValue}
+                    onChange={e => setLinkInputValue(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        const url = linkInputValue.trim();
+                        if (url) setForm({...form, links: [...(form.links || []), url]});
+                        setLinkInputValue(''); setShowLinkInput(false);
+                      } else if (e.key === 'Escape') {
+                        setLinkInputValue(''); setShowLinkInput(false);
+                      }
+                    }}
+                    onBlur={() => {
+                      setTimeout(() => {
+                        const url = linkInputValue.trim();
+                        if (url) setForm({...form, links: [...(form.links || []), url]});
+                        setLinkInputValue(''); setShowLinkInput(false);
+                      }, 150);
+                    }}
+                    placeholder="https://..."
+                    style={{width:220,padding:'4px 8px',fontSize:'0.78rem',
+                             background:'var(--surface)',color:'var(--text1)',
+                             border:'1px solid var(--accent)',borderRadius:4}}
+                    autoFocus
+                  />
+                </span>
+              )}
             </div>
           </div>
           
@@ -1348,7 +1406,7 @@ function TaskModal({ task, allTasks, dependencies, onClose, onSave, onDelete, on
 // CHAT PANEL
 // ════════════════════════════════════════════════════════════════════
 
-function ChatPanel({ tasks, dependencies, onPlanUpdate }) {
+function ChatPanel({ tasks, dependencies, onPlanUpdate, chatOpen, onToggleChat }) {
   const [msgs, setMsgs] = useState([{
     type:'agent',
     text:'👋 Привет! Я AI-агент, я не умею делать кофе, но могу работать с задачами:\n\n• Добавить\n• Перенести\n• Удалить\n• Связать с типом зависимости\n• Назначить\n• Отметь задачу выполненной\n\nНапиши что ты хочешь, я всё пойму (прямо как твой психолог) 😄'
@@ -1420,7 +1478,7 @@ function ChatPanel({ tasks, dependencies, onPlanUpdate }) {
   }, [send]);
 
   return (
-    <div className="chat-panel">
+    <div className={`chat-panel${chatOpen ? '' : ' collapsed'}`}>
       <div className="chat-header">
         <span className="dot"></span> AI Агент — Чат
       </div>
@@ -1530,8 +1588,17 @@ function App() {
   const [showConfetti, setShowConfetti] = useState(false);
   const confettiTimerRef = useRef(null);
   const fileRef = useRef(null);
+  const [chatOpen, setChatOpen] = useState(true);
 
-  const tasks = useMemo(() => computeSchedule(rawTasks, deps, projectStart), [rawTasks, deps, projectStart]);
+  const tasks = useMemo(() => {
+    const scheduled = computeSchedule(rawTasks, deps, projectStart);
+    // Sort by start_date ascending — лесенка сверху вниз
+    return [...scheduled].sort((a, b) => {
+      if (!a.start_date) return 1;
+      if (!b.start_date) return -1;
+      return a.start_date.localeCompare(b.start_date) || (a.id || '').localeCompare(b.id || '');
+    });
+  }, [rawTasks, deps, projectStart]);
   
   // Compute expected project end date — latest end_date among all tasks
   // Реальная дата старта проекта = дата самой ранней задачи
@@ -1708,17 +1775,24 @@ function App() {
     <>
       <div className="header">
         <div style={{display:'flex',alignItems:'center',gap:10}}>
-          <h1>📊 Gantt Plan Editor</h1>
+          <h1 style={{color:'#fdcb6e',WebkitTextFillColor:'#fdcb6e',background:'none'}}>REPKA Project</h1>
           <span style={{fontSize:'0.7rem',color:'var(--text2)',background:'var(--surface2)',padding:'2px 8px',borderRadius:10}}>AI-Native</span>
         </div>
         <div className="header-actions">
-          <div className="theme-switcher" title="Тема оформления">
-            <button className={'theme-btn' + (theme === 'dark' ? ' active' : '')} onClick={() => setTheme('dark')}>◐ Чёрная</button>
-            <button className={'theme-btn' + (theme === 'light' ? ' active' : '')} onClick={() => setTheme('light')}>○ Белая</button>
-          </div>
           <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{display:'none'}} onChange={handleImport}/>
           <button className="btn btn-sm" onClick={() => fileRef.current?.click()}>📤 Импорт Excel</button>
-          <button className="btn btn-primary btn-sm" onClick={handleExport}>📥 Экспорт Excel</button>
+          <button className="btn btn-sm" onClick={handleExport}>📥 Экспорт Excel</button>
+          <div style={{width:20}}></div>
+          <button
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            title={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
+            style={{
+              width:34, height:34, borderRadius:'50%', border:'1px solid var(--border)',
+              background: `conic-gradient(#0f1117 0deg 180deg, #f5f6fa 180deg 360deg)`,
+              cursor:'pointer', flexShrink:0, padding:0, outline:'none',
+              boxShadow: theme === 'dark' ? '0 0 0 2px var(--accent)' : '0 0 0 2px #aaa'
+            }}
+          />
         </div>
       </div>
 
@@ -1729,8 +1803,8 @@ function App() {
             <span style={{color:'var(--text2)',fontSize:'0.78rem',display:'flex',alignItems:'center',gap:4}}>
               Выполнено: <strong>{projectProgressPct}%</strong>
             </span>
-            <span style={{marginLeft:'auto',color:'var(--text2)',fontSize:'0.78rem'}}>Старт: <strong>{projectActualStart}</strong></span>
-            <span style={{color:'var(--text2)',fontSize:'0.78rem'}}>Финиш: <strong>{projectEnd}</strong></span>
+            <span style={{marginLeft:'auto',color:'var(--text2)',fontSize:'0.78rem'}}>Старт: <strong>{projectActualStart.split('-').reverse().join('-')}</strong></span>
+            <span style={{color:'var(--text2)',fontSize:'0.78rem'}}>Финиш: <strong>{projectEnd.split('-').reverse().join('-')}</strong></span>
           </div>
           <GanttChart 
             tasks={displayedTasks} 
@@ -1759,7 +1833,10 @@ function App() {
           </div>
         </div>
 
-        <ChatPanel tasks={rawTasks} dependencies={deps} onPlanUpdate={handlePlanUpdate}/>
+        <div className={`chat-toggle-tab${chatOpen ? '' : ' collapsed'}`} onClick={() => setChatOpen(prev => !prev)} title={chatOpen ? 'Скрыть AI агента' : 'Показать AI агента'}>
+          {chatOpen ? '◀' : '▶'}
+        </div>
+        <ChatPanel tasks={rawTasks} dependencies={deps} onPlanUpdate={handlePlanUpdate} chatOpen={chatOpen} onToggleChat={() => setChatOpen(prev => !prev)}/>
       </div>
 
       {selectedTask && (

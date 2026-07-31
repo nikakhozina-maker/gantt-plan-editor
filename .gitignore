@@ -1,8 +1,23 @@
-# .gitignore
-.env
+# Python
+venv/
 __pycache__/
 *.pyc
+*.pyo
 .venv/
-venv/
-node_modules/
+
+# Секреты — ни в коем случае не коммить!
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Python
+*.egg-info/
+dist/
+build/
