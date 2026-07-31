@@ -1,23 +1,12 @@
-# Python
 venv/
 __pycache__/
 *.pyc
-*.pyo
-.venv/
-
-# Секреты — ни в коем случае не коммить!
 .env
-
-# IDE
 .vscode/
 .idea/
-*.swp
-
-# OS
 .DS_Store
 Thumbs.db
-
-# Python
 *.egg-info/
 dist/
 build/
+node_modules/
