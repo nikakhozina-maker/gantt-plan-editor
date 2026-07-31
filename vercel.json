@@ -1,0 +1,16 @@
+{
+  "name": "gantt-plan-editor",
+  "version": 2,
+  "builds": [
+    {
+      "src": "gantt_editor_final.html",
+      "use": "@vercel/static"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/",
+      "dest": "/gantt_editor_final.html"
+    }
+  ]
+}

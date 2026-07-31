@@ -1,0 +1,1791 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gantt Plan Editor — AI-Native</title>
+<script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js">
+</script>
+<script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js">
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.23.5/babel.min.js">
+</script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js">
+</script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0f1117; --surface: #1a1d27; --surface2: #22263a; --border: #2d3148;
+  --text: #e1e4ed; --text2: #8b90a5; --accent: #6c5ce7; --accent2: #a29bfe;
+  --red: #e17055; --green: #00b894; --yellow: #fdcb6e; --blue: #4a90d9;
+  --orange: #f39c12; --purple: #9b59b6;
+  --radius: 10px; --radius-sm: 6px; --shadow: 0 4px 24px rgba(0,0,0,0.3);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);height:100vh;overflow:hidden;transition:background .2s,color .2s}
+body.light-theme{
+  --bg:#f5f6fa;--surface:#ffffff;--surface2:#eef0f5;--border:#d8dce8;
+  --text:#20232b;--text2:#687080;--shadow:0 4px 24px rgba(30,35,50,.12)
+}
+.theme-switcher{display:flex;gap:4px;padding:3px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2)}
+.theme-switcher .theme-btn{border:0;background:transparent;color:var(--text2);cursor:pointer;border-radius:4px;padding:4px 7px;font-size:.75rem}
+.theme-switcher .theme-btn.active{background:var(--accent);color:#fff}
+#root{height:100vh;display:flex;flex-direction:column}
+
+/* Header */
+.header{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:12px;flex-wrap:wrap}
+.header h1{font-size:1.15rem;font-weight:600;background:linear-gradient(135deg,var(--accent2),var(--accent));-webkit-background-clip:text;-webkit-text-fill-color:transparent;white-space:nowrap}
+.header-actions{display:flex;gap:8px;flex-wrap:wrap}
+.btn{padding:7px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;font-size:0.82rem;font-weight:500;transition:all 0.2s;display:flex;align-items:center;gap:5px;white-space:nowrap}
+.btn:hover{background:var(--border)}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn-primary:hover{background:#5b4bd5}
+.btn-danger{border-color:var(--red);color:var(--red)}
+.btn-danger:hover{background:rgba(225,112,85,0.15)}
+.btn-sm{padding:5px 10px;font-size:0.76rem}
+.btn-xs{padding:3px 8px;font-size:0.7rem;border-radius:4px}
+
+/* Layout */
+.main{display:flex;flex:1;overflow:hidden}
+.gantt-panel{flex:1;overflow:hidden;display:flex;flex-direction:column}
+.gantt-toolbar{display:flex;align-items:center;gap:12px;padding:10px 20px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;font-size:0.82rem;color:var(--text2)}
+.gantt-toolbar .toggle-group{display:flex;gap:4px;margin-left:12px}
+.gantt-toolbar .toggle-btn{padding:4px 10px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font-size:0.73rem;transition:all 0.2s;font-family:inherit}
+.gantt-toolbar .toggle-btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.gantt-toolbar .toggle-btn:hover:not(.active){border-color:var(--accent);color:var(--text)}
+.gantt-scroll{flex:1;overflow:auto;padding:0;position:relative}
+.gantt-calendar-fixed{flex-shrink:0;overflow:hidden;border-bottom:2px solid var(--border);background:var(--surface)}
+.gantt-calendar-inner{overflow-x:hidden}
+
+/* Gantt */
+.gantt-header{display:flex;background:var(--surface2);border-bottom:2px solid var(--border)}
+.gantt-body{position:relative}
+.gantt-row{display:flex;align-items:stretch;cursor:pointer;transition:background 0.15s;min-height:36px;border-bottom:1px solid rgba(45,49,72,0.4)}
+.gantt-row:hover{background:rgba(108,92,231,0.08)}
+.gantt-row.selected{background:rgba(108,92,231,0.18);outline:1px solid var(--accent);outline-offset:-1px}
+.gantt-cell{padding:6px 10px;display:flex;align-items:center;font-size:0.8rem;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;position:relative;z-index:1;background:var(--surface)}
+.cell-text-clip{display:block;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gantt-header .gantt-cell{background:var(--surface2)}
+.gantt-cell.id{color:var(--text2);font-size:0.72rem}
+.gantt-cell.task{font-weight:500}
+.gantt-cell.desc{color:var(--text2)}
+.gantt-cell.assignee{}
+.gantt-cell.dur{justify-content:center}
+.gantt-cell.pred{color:#858b94;font-size:0.73rem}
+.gantt-cell.bar-cell{flex:1;min-width:400px;position:relative;overflow:visible}
+.today-marker{position:absolute;top:0;bottom:0;width:2px;background:#8b8f98;opacity:0.75;z-index:0;pointer-events:none}
+
+/* Editable project name */
+.project-name-input{background:transparent;border:none;border-bottom:1px dashed var(--border);color:var(--text);font-size:1.15rem;font-weight:600;font-family:inherit;outline:none;width:220px;transition:border-color 0.2s}
+.project-name-input:focus{border-bottom-color:var(--accent)}
+.project-name-input::placeholder{color:var(--text2);font-weight:400}
+
+/* Progress bar */
+.progress-bar-bg{width:80px;height:6px;background:var(--surface2);border-radius:3px;overflow:hidden;display:inline-block;vertical-align:middle;margin:0 4px}
+.progress-bar-fg{height:100%;background:linear-gradient(90deg,var(--green),#55efc4);border-radius:3px;transition:width 0.4s}
+
+/* Column resize handle */
+.col-resize-handle{position:absolute;right:-3px;top:0;bottom:0;width:7px;cursor:col-resize;z-index:5;background:transparent}
+.col-resize-handle:hover,.col-resize-handle.dragging{background:var(--accent);opacity:0.6}
+.gantt-cell.col-resizable{position:relative;overflow:visible}
+
+/* Gantt header cells */
+.gantt-header .gantt-cell{font-weight:600;color:var(--text2);font-size:0.7rem;text-transform:uppercase;letter-spacing:0.4px;padding-top:8px;padding-bottom:8px}
+
+/* Date scale */
+.date-scale{display:flex;height:44px;position:relative;border-bottom:1px solid var(--border);background:var(--surface)}
+.date-scale-month{position:absolute;text-align:center;font-size:0.68rem;color:var(--text2);font-weight:600;top:2px}
+.date-scale-day{position:absolute;text-align:center;font-size:0.65rem;color:var(--text2);bottom:3px}
+.date-scale-grid{position:absolute;top:0;bottom:0;width:1px;background:var(--border);opacity:0.4}
+
+/* Bar area */
+.bar-area{position:relative;height:28px;margin:4px 0}
+.gantt-bar{position:absolute;top:0;height:28px;border-radius:5px;display:flex;align-items:center;padding:0 10px;font-size:0.7rem;font-weight:600;color:#fff;cursor:pointer;overflow:hidden;white-space:nowrap;transition:filter 0.2s,box-shadow 0.2s;min-width:6px;z-index:1}
+.gantt-bar:hover{filter:brightness(1.15);box-shadow:0 2px 8px rgba(0,0,0,0.3)}
+.gantt-bar.critical{box-shadow:0 0 0 2px rgba(225,112,85,0.6), 0 2px 8px rgba(0,0,0,0.3)}
+.grid-v{position:absolute;top:0;bottom:0;width:1px;background:var(--border);opacity:0.3;pointer-events:none}
+
+/* SVG dependency overlay */
+.svg-overlay{position:absolute;top:0;left:0;pointer-events:none;z-index:10;overflow:visible}
+.dep-line{fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+.dep-line.FS{stroke:#4A90D9}
+.dep-line.SS{stroke:#00B894}
+.dep-line.FF{stroke:#9B59B6}
+.dep-line.SF{stroke:#F39C12}
+.dep-line.critical{stroke:#E17055;stroke-width:3}
+.dep-line.critical.FS,.dep-line.critical.SS,.dep-line.critical.FF,.dep-line.critical.SF{stroke:#E17055}
+.dep-arrow{pointer-events:none}
+.dep-label{font-size:9px;fill:var(--text2);pointer-events:none}
+.dep-tooltip{position:absolute;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:0.72rem;color:var(--text);z-index:50;pointer-events:none;box-shadow:var(--shadow);white-space:nowrap}
+
+.badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:0.72rem;font-weight:500;background:var(--surface2);color:var(--accent2);cursor:pointer;transition:all 0.2s;border:1px solid transparent;user-select:none}
+body.light-theme .gantt-cell.assignee .badge{color:#374151;background:#e5e7eb;border-color:#cbd5e1}
+.badge:hover{background:var(--border);border-color:var(--accent)}
+.badge.active{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
+
+/* Chat */
+.chat-panel{width:420px;min-width:360px;border-left:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column;flex-shrink:0}
+.chat-header{padding:14px 18px;border-bottom:1px solid var(--border);font-weight:600;font-size:0.9rem;display:flex;align-items:center;gap:8px;flex-shrink:0}
+.chat-header .dot{width:8px;height:8px;border-radius:50%;background:var(--green)}
+.chat-msgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px}
+.chat-msg{display:flex;gap:8px}
+.chat-msg.agent{}
+.chat-msg.user{flex-direction:row-reverse}
+.chat-msg .avatar{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.8rem;flex-shrink:0}
+.chat-msg.agent .avatar{background:rgba(108,92,231,0.2);color:var(--accent2)}
+.chat-msg.user .avatar{background:rgba(253,203,110,0.2);color:var(--yellow)}
+.chat-msg .bubble{background:var(--surface2);padding:9px 13px;border-radius:12px;font-size:0.83rem;line-height:1.5;max-width:85%;word-break:break-word}
+.chat-msg.user .bubble{background:rgba(108,92,231,0.2)}
+.chat-input-area{padding:14px;border-top:1px solid var(--border);flex-shrink:0}
+.chat-input-row{display:flex;gap:8px}
+.chat-input-row input{flex:1;padding:10px 14px;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:0.83rem;outline:none;font-family:inherit;transition:border-color 0.2s}
+.chat-input-row input:focus{border-color:var(--accent)}
+.chat-input-row input::placeholder{color:var(--text2)}
+.chat-send{padding:10px 18px;border-radius:var(--radius);background:var(--accent);color:#fff;border:none;cursor:pointer;font-weight:600;font-size:0.83rem;transition:background 0.2s;flex-shrink:0}
+.chat-send:hover{background:#5b4bd5}
+.chat-send:disabled{opacity:0.5;cursor:not-allowed}
+.suggestions{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+.suggestion{padding:5px 10px;border-radius:14px;background:var(--surface2);color:var(--text2);border:1px solid var(--border);font-size:0.73rem;cursor:pointer;transition:all 0.2s;white-space:nowrap}
+.suggestion:hover{border-color:var(--accent);color:var(--text)}
+
+/* Modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;z-index:100;backdrop-filter:blur(4px)}
+.modal{background:var(--surface);border-radius:var(--radius);border:1px solid var(--border);width:580px;max-width:94vw;box-shadow:var(--shadow);max-height:88vh;overflow-y:auto}
+.modal-header{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;font-weight:600;font-size:0.9rem}
+.modal-close{background:none;border:none;color:var(--text2);cursor:pointer;font-size:1.2rem;line-height:1}
+.modal-close:hover{color:var(--text)}
+.modal-body{padding:18px;display:flex;flex-direction:column;gap:14px}
+.modal-footer{padding:14px 18px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end}
+.form-group{display:flex;flex-direction:column;gap:3px}
+.form-group label{font-size:0.73rem;color:var(--text2);font-weight:500;text-transform:uppercase;letter-spacing:0.3px}
+.form-group input,.form-group textarea,.form-group select{padding:9px 11px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:0.83rem;outline:none;font-family:inherit}
+.form-group input:focus,.form-group textarea:focus,.form-group select:focus{border-color:var(--accent)}
+.form-group textarea{resize:vertical;min-height:55px}
+.form-row{display:flex;gap:10px}
+.form-row>div{flex:1}
+/* Dependencies list in modal */
+.dep-list{display:flex;flex-direction:column;gap:6px;max-height:160px;overflow-y:auto}
+.dep-item{display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--surface2);border-radius:6px;font-size:0.78rem}
+.dep-item .dep-arrow-symbol{font-weight:bold;font-size:0.9rem}
+.dep-item .dep-arrow-symbol.FS{color:var(--blue)}
+.dep-item .dep-arrow-symbol.SS{color:var(--green)}
+.dep-item .dep-arrow-symbol.FF{color:var(--purple)}
+.dep-item .dep-arrow-symbol.SF{color:var(--orange)}
+.dep-item .dep-remove{background:none;border:none;color:var(--red);cursor:pointer;font-size:1rem;line-height:1;padding:0 4px;margin-left:auto}
+.dep-add-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.dep-add-row select,.dep-add-row input{flex:1;min-width:80px;padding:7px 9px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:0.78rem;outline:none;font-family:inherit}
+.dep-add-row select:focus,.dep-add-row input:focus{border-color:var(--accent)}
+.dep-add-row input[type=number]{width:55px;flex:0 0 auto}
+.dep-legend{display:flex;gap:10px;font-size:0.68rem;color:var(--text2);flex-wrap:wrap}
+.dep-legend span{display:flex;align-items:center;gap:3px}
+.dep-legend .dot{width:10px;height:10px;border-radius:2px;display:inline-block}
+.dep-legend .dot.FS{background:var(--blue)}
+.dep-legend .dot.SS{background:var(--green)}
+.dep-legend .dot.FF{background:var(--purple)}
+.dep-legend .dot.SF{background:var(--orange)}
+.dep-legend .dot.critical{background:var(--red)}
+
+.toast{position:fixed;bottom:20px;right:20px;padding:10px 18px;border-radius:var(--radius-sm);background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:0.83rem;z-index:200;animation:slideUp 0.3s ease;box-shadow:var(--shadow)}
+@keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+@keyframes confettiDrop{0%{transform:translateY(-10px) rotate(0deg);opacity:1}100%{transform:translateY(100px) rotate(720deg);opacity:0}}
+.confetti-overlay{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:300;pointer-events:none}
+.confetti-piece{position:absolute;width:10px;height:10px;border-radius:2px;animation:confettiDrop 1.5s ease-in forwards}
+.confetti-congrats{font-size:1.1rem;font-weight:700;color:var(--green);background:var(--surface);padding:12px 20px;border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid var(--green);white-space:nowrap;animation:slideUp 0.4s ease}
+.confetti-congrats.fadeout{animation:slideUp 0.4s ease, fadeAway 0.5s 9.5s ease forwards}
+@keyframes fadeAway{0%{opacity:1}100%{opacity:0}}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--text2)}
+.empty{text-align:center;padding:50px 20px;color:var(--text2)}
+.empty .icon{font-size:2.5rem;margin-bottom:10px}
+.stats{display:flex;gap:14px;padding:7px 18px;background:var(--surface);border-top:1px solid var(--border);font-size:0.73rem;color:var(--text2);flex-shrink:0;align-items:center;flex-wrap:wrap}
+.stats .val{color:var(--text);font-weight:600}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
+.loading{animation:pulse 1.5s infinite}
+.copy-id{cursor:pointer;color:var(--accent2);margin-left:4px;font-size:0.65rem}
+.copy-id:hover{color:var(--accent)}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+// ════════════════════════════════════════════════════════════════════
+// DEPENDENCY MODEL
+// ════════════════════════════════════════════════════════════════════
+
+const DEP_TYPES = ["SS","FS","SF"];
+// SS = Одновременно (оба стартуют вместе):        from → to  (type=SS, to_task_id = current)
+// FS = Предшествует (текущая завершается → та стартует):  from=current → to=selected (type=FS, исходящая)
+// SF = Следует  (та завершается → текущая стартует): from=selected → to=current (type=FS, входящая)
+const DEP_TYPE_LABELS = {"SS":"Одновременно","FS":"Предшествует","SF":"Следует"};
+const DEP_TYPE_SYMBOLS = {"FS":"→","SS":"⇒"};
+
+function genDepId(deps) {
+  const ids = deps.map(d => d.id).filter(id => /^dep\d+$/.test(id)).map(id => parseInt(id.slice(3)));
+  return 'dep' + (ids.length > 0 ? Math.max(...ids) + 1 : 1);
+}
+
+// ════════════════════════════════════════════════════════════════════
+// CORE ENGINE — schedule with typed dependencies
+// ════════════════════════════════════════════════════════════════════
+
+const COLORS = ["#4A90D9","#7B61FF","#E84393","#00B894","#FDCB6E","#E17055","#0984E3","#6C5CE7","#00CEC9","#FAB1A0","#55E6C1","#FF7979","#BDC581","#E056A0","#636ECC"];
+
+function computeSchedule(tasks, dependencies, projectStart) {
+  const ps = new Date(projectStart + 'T00:00:00');
+  const cache = new Map();
+  const calculating = new Set();
+
+  function computeOne(task) {
+    if (cache.has(task.id)) return cache.get(task.id);
+
+    // Защита от циклических связей (A → B → A),
+    // которые иначе вызывают бесконечную рекурсию и «роняют» экран.
+    if (calculating.has(task.id)) {
+      const safeStart = task.start_date && task.manual_start
+        ? new Date(task.start_date + 'T00:00:00')
+        : new Date(ps);
+      const safeEnd = new Date(safeStart);
+      safeEnd.setDate(safeEnd.getDate() + (task.duration || 1) - 1);
+      return [safeStart, safeEnd];
+    }
+    calculating.add(task.id);
+    
+    // Find all dependencies where this task is the "to" task
+    const incomingDeps = dependencies.filter(d => d.to_task_id === task.id);
+    
+    let start, end;
+    
+    // If manually set start_date, use it directly
+    if (task.manual_start && task.start_date) {
+      start = new Date(task.start_date + 'T00:00:00');
+      end = new Date(start);
+      end.setDate(end.getDate() + (task.duration || 1) - 1);
+    } else if (incomingDeps.length === 0) {
+      start = new Date(ps);
+      end = new Date(start);
+      end.setDate(end.getDate() + (task.duration || 1) - 1);
+    } else {
+      // Calculate based on dependency types
+      let earliestStart = new Date(ps);
+      let sfLatestStart = null; // SF constraints are upper bounds (B finishes when A starts)
+      
+      for (const dep of incomingDeps) {
+        const predTask = tasks.find(t => t.id === dep.from_task_id);
+        if (!predTask) continue;
+        const [pStart, pEnd] = computeOne(predTask);
+        const lag = (dep.lag_days || 0);
+        
+        let candidateStart;
+        switch (dep.type || "FS") {
+          case "FS": // Finish-Start: B starts after A finishes
+            candidateStart = new Date(pEnd);
+            candidateStart.setDate(candidateStart.getDate() + 1 + lag);
+            if (candidateStart > earliestStart) earliestStart = candidateStart;
+            break;
+          case "SS": // Start-Start: B starts with A
+            candidateStart = new Date(pStart);
+            candidateStart.setDate(candidateStart.getDate() + lag);
+            if (candidateStart > earliestStart) earliestStart = candidateStart;
+            break;
+          case "FF": // Finish-Finish: B finishes when A finishes
+            candidateStart = new Date(pEnd);
+            candidateStart.setDate(candidateStart.getDate() - (task.duration || 1) + 1 + lag);
+            if (candidateStart > earliestStart) earliestStart = candidateStart;
+            break;
+          case "SF": // Start-Finish: B ENDS when A STARTS → B_start = A_start - duration + 1 (upper bound)
+            candidateStart = new Date(pStart);
+            candidateStart.setDate(candidateStart.getDate() - (task.duration || 1) + 1 + lag);
+            // SF is an upper bound: B must NOT start later than this
+            if (sfLatestStart === null || candidateStart < sfLatestStart) sfLatestStart = candidateStart;
+            break;
+          default:
+            candidateStart = new Date(pEnd);
+            candidateStart.setDate(candidateStart.getDate() + 1 + lag);
+            if (candidateStart > earliestStart) earliestStart = candidateStart;
+        }
+      }
+      
+      // Apply SF constraint: B must start at or before sfLatestStart
+      if (sfLatestStart !== null) {
+        if (sfLatestStart < earliestStart) {
+          // Conflict: SF wants B earlier but FS/SS push it later. Clamp to earliestStart.
+          // B starts at earliestStart, but its end will exceed A's start (constraint violation warning)
+          start = earliestStart;
+        } else {
+          // Normal SF: B starts at sfLatestStart, finishes exactly at A's start
+          start = sfLatestStart;
+        }
+      } else {
+        start = earliestStart;
+      }
+      
+      end = new Date(start);
+      end.setDate(end.getDate() + (task.duration || 1) - 1);
+    }
+    
+    const entry = [start, end];
+    calculating.delete(task.id);
+    cache.set(task.id, entry);
+    return entry;
+  }
+
+  const computed = tasks.map(t => {
+    const [s, e] = computeOne(t);
+    return {
+      ...t,
+      start_date: t.manual_start ? t.start_date : s.toISOString().split('T')[0],
+      end_date: e.toISOString().split('T')[0],
+      duration: t.duration || 1,
+      color: t.color || COLORS[parseInt(t.id) % COLORS.length],
+    };
+  });
+  return computed;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// CRITICAL PATH
+// ════════════════════════════════════════════════════════════════════
+
+function computeCriticalPath(tasks, dependencies) {
+  if (!tasks || tasks.length === 0) return { criticalIds: new Set(), criticalDepIds: new Set() };
+  
+  // Forward pass: earliest start/finish
+  const earliestStart = new Map();
+  const earliestFinish = new Map();
+  
+  // Topological sort (simple approach for small graphs)
+  const visited = new Set();
+  const order = [];
+  
+  function visit(id) {
+    if (visited.has(id)) return;
+    visited.add(id);
+    const incoming = dependencies.filter(d => d.to_task_id === id);
+    for (const dep of incoming) {
+      visit(dep.from_task_id);
+    }
+    order.push(id);
+  }
+  
+  for (const t of tasks) visit(t.id);
+  
+  // Forward pass
+  const taskMap = new Map(tasks.map(t => [t.id, t]));
+  for (const id of order) {
+    const task = taskMap.get(id);
+    const incoming = dependencies.filter(d => d.to_task_id === id);
+    let es = 0;
+    for (const dep of incoming) {
+      const predEf = earliestFinish.get(dep.from_task_id) || 0;
+      const lag = dep.lag_days || 0;
+      let candidate;
+      switch (dep.type || "FS") {
+        case "FS": candidate = predEf + 1 + lag; break;
+        case "SS": candidate = (earliestStart.get(dep.from_task_id) || 0) + lag; break;
+        case "FF": candidate = predEf - (task.duration || 1) + 1 + lag; break;
+        case "SF": candidate = (earliestStart.get(dep.from_task_id) || 0) - (task.duration || 1) + 1 + lag; break;
+        default: candidate = predEf + 1 + lag;
+      }
+      if (candidate > es) es = candidate;
+    }
+    earliestStart.set(id, es);
+    earliestFinish.set(id, es + (task.duration || 1) - 1);
+  }
+  
+  // Backward pass
+  const latestFinish = new Map();
+  const latestStart = new Map();
+  const maxEf = Math.max(...Array.from(earliestFinish.values()));
+  
+  for (const id of order) {
+    latestFinish.set(id, maxEf);
+  }
+  
+  // Reverse order
+  const revOrder = [...order].reverse();
+  for (const id of revOrder) {
+    const task = taskMap.get(id);
+    const outgoing = dependencies.filter(d => d.from_task_id === id);
+    let lf = maxEf;
+    for (const dep of outgoing) {
+      const succLs = latestStart.get(dep.to_task_id);
+      if (succLs !== undefined) {
+        const lag = dep.lag_days || 0;
+        let candidate;
+        switch (dep.type || "FS") {
+          case "FS": candidate = succLs - 1 - lag; break;
+          case "SS": candidate = succLs - (task.duration || 1) + 1 - lag; break;
+          case "FF": candidate = (latestFinish.get(dep.to_task_id) || maxEf) - lag; break;
+          case "SF": candidate = succLs - (task.duration || 1) + 1 - lag; break;
+          default: candidate = succLs - 1 - lag;
+        }
+        if (candidate < lf) lf = candidate;
+      }
+    }
+    latestFinish.set(id, lf);
+    latestStart.set(id, lf - (task.duration || 1) + 1);
+  }
+  
+  // Critical: tasks where ES == LS
+  const criticalIds = new Set();
+  for (const id of order) {
+    const es = earliestStart.get(id) || 0;
+    const ls = latestStart.get(id) || 0;
+    if (Math.abs(es - ls) < 0.5) {
+      criticalIds.add(id);
+    }
+  }
+  
+  // Critical dependencies: both tasks critical AND on critical path
+  const criticalDepIds = new Set();
+  for (const dep of dependencies) {
+    if (criticalIds.has(dep.from_task_id) && criticalIds.has(dep.to_task_id)) {
+      // Check if this dependency is on the critical path
+      const fromEf = earliestFinish.get(dep.from_task_id) || 0;
+      const toEs = earliestStart.get(dep.to_task_id) || 0;
+      const lag = dep.lag_days || 0;
+      let expectedGap;
+      switch (dep.type || "FS") {
+        case "FS": expectedGap = fromEf + 1 + lag; break;
+        case "SS": expectedGap = (earliestStart.get(dep.from_task_id) || 0) + lag; break;
+        case "FF": expectedGap = fromEf - (taskMap.get(dep.to_task_id)?.duration || 1) + 1 + lag; break;
+        case "SF": expectedGap = (earliestStart.get(dep.from_task_id) || 0) - (taskMap.get(dep.to_task_id)?.duration || 1) + 1 + lag; break;
+        default: expectedGap = fromEf + 1 + lag;
+      }
+      if (Math.abs(toEs - expectedGap) < 0.5) {
+        criticalDepIds.add(dep.id);
+      }
+    }
+  }
+  
+  return { criticalIds, criticalDepIds };
+}
+
+function genNextId(tasks) {
+  const ids = tasks.map(t => t.id).filter(id => /^\d+$/.test(id)).map(Number);
+  return String(ids.length > 0 ? Math.max(...ids) + 1 : 1);
+}
+
+// ════════════════════════════════════════════════════════════════════
+// SEED DATA
+// ════════════════════════════════════════════════════════════════════
+
+const SEED_TASKS = [
+  { id:"1",task:"Анализ требований",description:"Сбор и анализ требований заказчика",assignee:"Анна",duration:3,color:"#4A90D9"},
+  { id:"2",task:"Проектирование архитектуры",description:"Разработка архитектуры системы",assignee:"Игорь",duration:5,color:"#7B61FF"},
+  { id:"3",task:"Дизайн интерфейса",description:"Создание макетов UI/UX",assignee:"Диана",duration:4,color:"#E84393"},
+  { id:"4",task:"Разработка бэкенда",description:"Реализация API и базы данных",assignee:"Игорь",duration:8,color:"#00B894"},
+  { id:"5",task:"Разработка фронтенда",description:"Реализация клиентской части",assignee:"Алексей",duration:7,color:"#FDCB6E"},
+  { id:"6",task:"Интеграционное тестирование",description:"Тестирование взаимодействия модулей",assignee:"Елена",duration:4,color:"#E17055"},
+  { id:"7",task:"Развёртывание",description:"Деплой на продакшн-сервер",assignee:"Игорь",duration:2,color:"#0984E3"},
+  { id:"8",task:"Обучение пользователей",description:"Проведение тренингов",assignee:"Анна",duration:2,color:"#6C5CE7"},
+];
+
+const SEED_DEPENDENCIES = [
+  { id:"dep1", from_task_id:"1", to_task_id:"2", type:"FS", lag_days:0 },
+  { id:"dep2", from_task_id:"1", to_task_id:"3", type:"FS", lag_days:0 },
+  { id:"dep3", from_task_id:"2", to_task_id:"4", type:"FS", lag_days:0 },
+  { id:"dep4", from_task_id:"2", to_task_id:"5", type:"FS", lag_days:0 },
+  { id:"dep5", from_task_id:"3", to_task_id:"5", type:"FS", lag_days:0 },
+  { id:"dep6", from_task_id:"4", to_task_id:"6", type:"FS", lag_days:0 },
+  { id:"dep7", from_task_id:"5", to_task_id:"6", type:"FS", lag_days:0 },
+  { id:"dep8", from_task_id:"6", to_task_id:"7", type:"FS", lag_days:0 },
+  { id:"dep9", from_task_id:"7", to_task_id:"8", type:"FS", lag_days:0 },
+];
+
+// ════════════════════════════════════════════════════════════════════
+// AI AGENT — Local NLP command parser
+// ════════════════════════════════════════════════════════════════════
+
+function aiProcessCommand(msg, tasks, dependencies) {
+  const m = msg.trim();
+  const ml = m.toLowerCase();
+  let reply = '';
+  let newTasks = tasks.map(t => ({...t}));
+  let newDeps = dependencies ? [...dependencies] : [];
+  let changed = false;
+
+  // ── HELP ──
+  if (ml === 'помощь' || ml === 'help' || ml === '?' || ml === 'команды') {
+    reply = '📋 **Доступные команды:**\n\n' +
+      '• **Добавить:** «Добавь задачу «Название» на N дней, исполнитель Имя»\n' +
+      '• **Изменить:** «Перенеси Название задачи на N дней»\n' +
+      '• **Удалить:** «Удали задачу Название»\n' +
+      '• **Связать:** «Свяжи Задачу А с Задачей Б» или «Свяжи А с Б, тип FS, задержка 2 дня»\n' +
+      '• **Разорвать связь:** «Разорви связь между А и Б»\n' +
+      '• **Назначить:** «Назначь Задачу на Имя»\n' +
+      '• **Показать:** «Покажи план» или «Список задач»\n' +
+      '• **Выполнить:** «Отметь задачу Название выполненной»\n' +
+      '• **Сбросить:** «Сбрось план»\n\n' +
+      '😄 Я не устаю от задач, но иногда мечтаю о кнопке «Сделать всё». Пока умею только честно работать!\n\n' +
+      '**Типы связей:** FS (конец→начало), SS (начало→начало), FF (конец→конец), SF (начало→конец)\n\n' +
+      '**Текущие задачи:**\n';
+    for (const t of newTasks) {
+      reply += `• ${t.id}: **${t.task}** (${t.assignee || '—'}, ${t.duration} дн.)\n`;
+    }
+    return { reply, tasks: null, dependencies: null };
+  }
+
+  // ── ADD ──
+  if (/добав|созда|нов(ая|ую)/.test(ml) || /\badd\b/.test(ml)) {
+    const nameMatch = m.match(/«([^»]+)»/) || m.match(/"([^"]+)"/) || m.match(/задачу\s+([^,.;]+?)(?:\s+на|\s*$)/i);
+    const taskName = nameMatch ? (nameMatch[1] || nameMatch[2] || nameMatch[3]).trim() : 'Новая задача';
+    
+    const durMatch = m.match(/(\d+)\s*(дн|day|день|дня|дней)/i);
+    const duration = durMatch ? parseInt(durMatch[1]) : 3;
+    
+    let assignee = '';
+    for (const name of ['Анна','Игорь','Диана','Алексей','Елена']) {
+      if (ml.includes(name.toLowerCase())) { assignee = name; break; }
+    }
+    
+    // Find predecessor for auto-linking
+    let predId = '';
+    for (const t of newTasks) {
+      if (t.task && ml.includes(t.task.toLowerCase().slice(0, 8))) {
+        predId = t.id;
+        break;
+      }
+    }
+    if (!predId && /после\s+(\d+)/.test(ml)) {
+      predId = m.match(/после\s+(\d+)/)[1];
+    }
+
+    const descMatch = m.match(/описание[:\s]+([^,.;]+)/i);
+    const description = descMatch ? descMatch[1].trim() : '';
+
+    const newId = genNextId(newTasks);
+    const newTask = {
+      id: newId, task: taskName, description,
+      assignee, duration,
+      color: COLORS[newTasks.length % COLORS.length],
+    };
+    newTasks.push(newTask);
+    changed = true;
+    reply = `✅ Добавил задачу **«${taskName}»** (ID: ${newId}, ${duration} дн.)`;
+    if (assignee) reply += `\n👤 Исполнитель: **${assignee}**`;
+    
+    // Auto-create FS dependency
+    if (predId) {
+      const newDepId = genDepId(newDeps);
+      newDeps.push({ id: newDepId, from_task_id: predId, to_task_id: newId, type: "FS", lag_days: 0 });
+      const pt = newTasks.find(t => t.id === predId);
+      reply += `\n🔗 Связь FS: **${pt ? pt.task : predId}** → **${taskName}**`;
+    }
+    if (description) reply += `\n📝 ${description}`;
+  }
+
+  // ── COMPLETE / REOPEN ──
+  else if (/верни.*работ|снять.*выполн|отмен.*выполн|reopen|undo/i.test(ml)) {
+    const found = findTaskByMention(ml, newTasks);
+    if (found) {
+      found.completed = false;
+      changed = true;
+      reply = `↩️ Задача **«${found.task}»** снова в работе. Она вернулась — как бумеранг, только с дедлайном 😄`;
+    } else reply = '🤔 Не нашёл задачу. Укажите её название.';
+  }
+  else if (/выполн|заверш|готово|закрыт|статус.*выполн|complete|done/i.test(ml)) {
+    const found = findTaskByMention(ml, newTasks);
+    if (found) {
+      found.completed = true;
+      changed = true;
+      reply = `✅ Задача **«${found.task}»** отмечена выполненной. Отлично, ещё одна галочка покорена! 🎉`;
+    } else reply = '🤔 Не нашёл задачу. Укажите её название.';
+  }
+
+  // ── DELETE ──
+  else if (/удал|убер|delete|remove/i.test(ml) && !/связ/i.test(ml)) {
+    const found = findTaskByMention(ml, newTasks);
+    if (found) {
+      const removedId = found.id;
+      newTasks = newTasks.filter(t => t.id !== removedId);
+      // Clean dependencies
+      newDeps = newDeps.filter(d => d.from_task_id !== removedId && d.to_task_id !== removedId);
+      changed = true;
+      reply = `🗑️ Удалил задачу **«${found.task}»** и все её связи. Она отправилась в великий архив проектов 🗃️`;
+    } else {
+      reply = '🤔 Не нашёл задачу для удаления. Укажите точное название или ID.';
+    }
+  }
+
+  // ── MOVE / CHANGE DURATION ──
+  else if (/перенес|передвин|сдвин|измени|move/i.test(ml)) {
+    const found = findTaskByMention(ml, newTasks);
+    if (found) {
+      const durMatch = m.match(/(\d+)\s*(дн|day|день|дня|дней)/i);
+      if (durMatch) {
+        found.duration = parseInt(durMatch[1]);
+        changed = true;
+        reply = `✅ Изменил длительность задачи **«${found.task}»** → **${found.duration} дн.**`;
+      } else {
+        reply = `🤔 Укажите новую длительность для **«${found.task}»**, например: «Перенеси ${found.task} на 5 дней»`;
+      }
+    } else {
+      reply = '🤔 Не нашёл задачу. Уточните название.';
+    }
+  }
+
+  // ── DEPENDENCY / LINK ──
+  else if (/разорв|удали связь|убрать связь|remove dep/i.test(ml)) {
+    const mentioned = findMultipleTasks(ml, newTasks);
+    if (mentioned.length >= 2) {
+      const before = newDeps.length;
+      newDeps = newDeps.filter(d => !(
+        (d.from_task_id === mentioned[0].id && d.to_task_id === mentioned[1].id) ||
+        (d.from_task_id === mentioned[1].id && d.to_task_id === mentioned[0].id)
+      ));
+      if (newDeps.length < before) {
+        changed = true;
+        reply = `✂️ Разорвал связь между **«${mentioned[0].task}»** и **«${mentioned[1].task}»**. Теперь они снова свободны, как коты сами по себе 😼`;
+      } else reply = '🤔 Между этими задачами нет связи.';
+    } else reply = '🤔 Укажите две задачи, между которыми нужно разорвать связь.';
+  }
+
+  // ── DEPENDENCY / LINK ──
+  else if (/свяж|зависим|depend/i.test(ml)) {
+    const mentioned = findMultipleTasks(ml, newTasks);
+    if (mentioned.length >= 2) {
+      // Determine dependency type
+      let depType = "FS";
+      const typeMatch = m.match(/тип[:\s]*([SF]+)/i) || m.match(/\b(FS|SS|FF|SF)\b/i);
+      if (typeMatch) depType = typeMatch[1].toUpperCase();
+      
+      // Determine lag
+      let lagDays = 0;
+      const lagMatch = m.match(/задержк[аой]?\s*(\d+)/i) || m.match(/лаг\s*(\d+)/i) || m.match(/lag\s*(\d+)/i);
+      if (lagMatch) lagDays = parseInt(lagMatch[1]);
+      
+      // FIXED: mentioned[0] = predecessor (from), mentioned[1] = successor (to)
+      // Remove any existing dependency between these tasks in either direction
+      newDeps = newDeps.filter(d => !(
+        (d.from_task_id === mentioned[0].id && d.to_task_id === mentioned[1].id) ||
+        (d.from_task_id === mentioned[1].id && d.to_task_id === mentioned[0].id)
+      ));
+      
+      const newDepId = genDepId(newDeps);
+      newDeps.push({ id: newDepId, from_task_id: mentioned[0].id, to_task_id: mentioned[1].id, type: depType, lag_days: lagDays });
+      changed = true;
+      
+      const typeLabel = DEP_TYPE_LABELS[depType] || depType;
+      reply = `🔗 Установил связь **${typeLabel}**: **«${mentioned[0].task}»** → **«${mentioned[1].task}»**`;
+      if (lagDays > 0) reply += `\n⏱️ Задержка: **${lagDays} дн.**`;
+    } else if (mentioned.length === 1) {
+      reply = `🤔 Нашёл задачу **«${mentioned[0].task}»**. Укажите вторую задачу, которая зависит от неё.\nНапример: «Свяжи ${mentioned[0].task} с Название второй задачи»\n\nПервая указанная задача считается предшественником (from), вторая — зависимой (to).\nМожно указать тип связи: «Свяжи А с Б, тип SS, задержка 2 дня»`;
+    } else {
+      reply = '🤔 Укажите две задачи. Например: «Свяжи Разработку фронтенда с Дизайном интерфейса»\n\n**Типы связей:** FS (конец→начало), SS (начало→начало), FF (конец→конец), SF (начало→конец)';
+    }
+  }
+  
+  // ── REASSIGN ──
+  else if (/назнач|исполнител|assign|делает/i.test(ml)) {
+    const found = findTaskByMention(ml, newTasks);
+    if (found) {
+      let newAssignee = '';
+      for (const name of ['Анна','Игорь','Диана','Алексей','Елена']) {
+        if (ml.includes(name.toLowerCase())) { newAssignee = name; break; }
+      }
+      const naMatch = m.match(/на\s+(Анн[уа]|Игор[ья]?|Диан[уа]?|Алексе[яй]|Елен[уа]?)/i);
+      if (naMatch) {
+        const n = naMatch[1].toLowerCase();
+        if (n.startsWith('анн')) newAssignee = 'Анна';
+        else if (n.startsWith('игор')) newAssignee = 'Игорь';
+        else if (n.startsWith('диан')) newAssignee = 'Диана';
+        else if (n.startsWith('алекс')) newAssignee = 'Алексей';
+        else if (n.startsWith('елен')) newAssignee = 'Елена';
+      }
+      if (newAssignee) {
+        found.assignee = newAssignee;
+        changed = true;
+        reply = `👤 Задача **«${found.task}»** теперь назначена на **${newAssignee}**. ${newAssignee} уже надевает рабочую корону 👑`;
+      } else {
+        reply = '🤔 Укажите исполнителя. Например: «Назначь Разработку бэкенда на Игоря»';
+      }
+    } else {
+      reply = '🤔 Не нашёл задачу. Уточните название.';
+    }
+  }
+
+  // ── LIST / SHOW ──
+  else if (/покаж|список|list|show/i.test(ml)) {
+    reply = '📋 **Текущий план проекта:**\n\n';
+    for (const t of newTasks) {
+      reply += `• **${t.id}**: ${t.task} — ${t.assignee || 'нет исп.'}, ${t.duration} дн.`;
+      const taskDeps = newDeps.filter(d => d.to_task_id === t.id);
+      if (taskDeps.length > 0) {
+        const depDescs = taskDeps.map(d => {
+          const from = newTasks.find(tt => tt.id === d.from_task_id);
+          return `${from ? from.task : d.from_task_id} (${d.type || 'FS'})`;
+        });
+        reply += ` ← ${depDescs.join(', ')}`;
+      }
+      reply += '\n';
+    }
+    const total = newTasks.reduce((s,t) => s + (t.duration||0), 0);
+    reply += `\n📊 Всего: **${newTasks.length}** задач, **${newDeps.length}** связей, **${total}** дн.`;
+  }
+
+  // ── RESET ──
+  else if (/сброс|reset|изначаль/i.test(ml)) {
+    newTasks = SEED_TASKS.map(t => ({...t}));
+    newDeps = SEED_DEPENDENCIES.map(d => ({...d}));
+    changed = true;
+    reply = '🔄 План сброшен к исходным тестовым данным (8 задач, 9 связей).';
+  }
+
+  // ── GREETING ──
+  else if (/приве|hi|hello|здрав/i.test(ml)) {
+    reply = '👋 Привет! Я AI-агент для управления планом проекта. Напишите **«помощь»** для списка доступных команд.';
+  }
+
+  // ── FALLBACK ──
+  else {
+    reply = '🤔 Не совсем понял команду. Попробуйте:\n' +
+      '• **«Добавь задачу ...»**\n' +
+      '• **«Удали задачу ...»**\n' +
+      '• **«Перенеси ... на N дней»**\n' +
+      '• **«Назначь ... на ...»**\n' +
+      '• **«Свяжи ... с ..., тип FS, задержка 2 дня»**\n' +
+      '• **«Разорви связь ...»**\n\n' +
+      'Напишите **«помощь»** для полного списка.';
+  }
+
+  if (changed) {
+    return { reply, tasks: newTasks, dependencies: newDeps };
+  }
+  return { reply, tasks: null, dependencies: null };
+}
+
+// Нормализация русских фраз для команд: учитывает падежи, «ё/е»,
+// частую опечатку «бэкенд/бекенд» и лишние знаки препинания.
+function normalizeAiWord(word) {
+  let w = String(word || '').toLowerCase()
+    .replace(/ё/g, 'е').replace(/э/g, 'е')
+    .replace(/[^а-яa-z0-9]/g, '');
+  if (w.length > 4) {
+    w = w.replace(/(ами|ями|ого|ему|ому|ыми|ими|ов|ев|ам|ям|ах|ях|ами|ями|ою|ею|ать|ять|ить|еть|ую|юю|ою|ею)$/,'')
+         .replace(/(а|я|у|ю|е|ы|и|ом|ем|ой|ей)$/,'');
+  }
+  return w;
+}
+
+function aiTokens(text) {
+  return String(text || '').toLowerCase()
+    .replace(/ё/g, 'е').replace(/э/g, 'е')
+    .match(/[а-яa-z0-9]+/g)?.map(normalizeAiWord) || [];
+}
+
+function taskMentionScore(text, taskName) {
+  const source = aiTokens(text);
+  const target = aiTokens(taskName);
+  if (!target.length) return 0;
+  const sourceSet = new Set(source);
+  const matched = target.filter(token => sourceSet.has(token)).length;
+  // Все слова названия задачи должны быть найдены; это защищает от
+  // выбора похожей задачи при командах с несколькими названиями.
+  if (matched === target.length) return 100 + target.length;
+  return matched / target.length;
+}
+
+function findTaskByMention(text, tasks) {
+  const qMatch = String(text).match(/[«"]([^»"]+)[»"]/);
+  if (qMatch) {
+    const quoted = tasks.find(t => taskMentionScore(qMatch[1], t.task) >= 100);
+    if (quoted) return quoted;
+  }
+  let idMatch = String(text).match(/(?:^|\s)#?(\d+)(?:\s|$|,|\.)/);
+  if (idMatch && !/^\s*(дн|day|день|дня|дней)/i.test(String(text).slice(idMatch.index + idMatch[0].length))) {
+    const byId = tasks.find(t => t.id === idMatch[1]);
+    if (byId) return byId;
+  }
+  return [...tasks]
+    .map(t => ({task:t, score:taskMentionScore(text, t.task)}))
+    .filter(x => x.score >= 100)
+    .sort((a,b) => b.score - a.score)[0]?.task || null;
+}
+
+function findMultipleTasks(text, tasks) {
+  // Preserve order of FIRST APPEARANCE in text (for correct dependency direction)
+  const textLower = text.toLowerCase();
+  const positions = [];
+  for (const t of tasks) {
+    const score = taskMentionScore(text, t.task);
+    if (score >= 100) {
+      const pos = textLower.indexOf(t.task.toLowerCase());
+      positions.push({ task: t, score, pos: pos >= 0 ? pos : 9999 });
+    }
+  }
+  // Sort by position in text (first mentioned = predecessor)
+  positions.sort((a, b) => a.pos - b.pos);
+  return positions.slice(0, 2).map(x => x.task);
+}
+
+// ════════════════════════════════════════════════════════════════════
+// GANTT CHART — with SVG dependency lines
+// ════════════════════════════════════════════════════════════════════
+
+const DAY_W = 30;
+const TODAY_DATE = new Date().toISOString().split('T')[0];
+
+function GanttChart({ tasks, dependencies, projectStart, selectedId, onSelect, showDeps, showCritical, criticalIds, criticalDepIds }) {
+  const headerScrollRef = useRef(null);
+  const bodyScrollRef = useRef(null);
+  const [tooltip, setTooltip] = useState(null);
+
+  useEffect(() => {
+    const headerEl = headerScrollRef.current;
+    const bodyEl = bodyScrollRef.current;
+    if (!headerEl || !bodyEl) return;
+    const sync = () => { headerEl.scrollLeft = bodyEl.scrollLeft; };
+    bodyEl.addEventListener('scroll', sync, {passive:true});
+    return () => bodyEl.removeEventListener('scroll', sync);
+  }, []);
+
+  if (!tasks || tasks.length === 0) {
+    return (
+      <div className="empty">
+        <div className="icon">📋</div>
+        <p>План пуст. Добавьте задачи через чат или импортируйте Excel.</p>
+      </div>
+    );
+  }
+
+  const allDates = tasks.flatMap(t => [t.start_date, t.end_date].filter(Boolean));
+  const minD = allDates.length > 0 ? new Date(Math.min(...allDates.map(d => new Date(d)))) : new Date(projectStart);
+  const maxD = allDates.length > 0 ? new Date(Math.max(...allDates.map(d => new Date(d)))) : new Date(projectStart);
+  const totalDays = Math.max(Math.ceil((maxD - minD) / 86400000) + 3, 10);
+  const barAreaW = totalDays * DAY_W;
+  const todayLeft = Math.round((new Date(TODAY_DATE) - minD) / 86400000) * DAY_W;
+  const ROW_H = 36;
+
+  // ── Column widths (resizable) ──
+  const defaultColWidths = { task: 200, desc: 180, assignee: 100, dur: 48, pred: 120 };
+  const [colWidths, setColWidths] = useState(defaultColWidths);
+  const LEFT_W = colWidths.task + colWidths.desc + colWidths.assignee + colWidths.dur + colWidths.pred;
+  const fullW = LEFT_W + barAreaW;
+
+  // Column resize logic
+  const resizeRef = useRef({ col: null, startX: 0, startW: 0 });
+  
+  const onResizeMouseDown = useCallback((e, colKey) => {
+    e.preventDefault();
+    e.stopPropagation();
+    resizeRef.current = { col: colKey, startX: e.clientX, startW: colWidths[colKey] };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, [colWidths]);
+  
+  useEffect(() => {
+    const onMouseMove = (e) => {
+      const r = resizeRef.current;
+      if (!r.col) return;
+      const delta = e.clientX - r.startX;
+      const newW = Math.max(30, r.startW + delta);
+      setColWidths(prev => ({ ...prev, [r.col]: newW }));
+    };
+    const onMouseUp = () => {
+      resizeRef.current.col = null;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+  }, []);
+
+  const dates = [];
+  for (let i = 0; i <= totalDays; i++) {
+    const d = new Date(minD);
+    d.setDate(d.getDate() + i);
+    dates.push(d);
+  }
+
+  const barLeft = (dateStr) => {
+    const d = new Date(dateStr);
+    return Math.round((d - minD) / 86400000) * DAY_W;
+  };
+  const barWidth = (startStr, endStr) => {
+    const s = new Date(startStr);
+    const e = new Date(endStr);
+    return Math.max(Math.round((e - s) / 86400000) + 1, 1) * DAY_W - 4;
+  };
+
+  const months = [];
+  let curMonth = null;
+  dates.forEach((d, i) => {
+    const mk = d.getFullYear() + '-' + d.getMonth();
+    if (!curMonth || curMonth.key !== mk) {
+      if (curMonth) months.push(curMonth);
+      curMonth = { key: mk, label: d.toLocaleString('ru',{month:'long',year:'numeric'}), start: i, end: i };
+    } else {
+      curMonth.end = i;
+    }
+  });
+  if (curMonth) months.push(curMonth);
+
+  // Build task index for row positions
+  const taskIndex = new Map();
+  tasks.forEach((t, i) => taskIndex.set(t.id, i));
+
+  // Compute SVG paths for visible dependencies
+  const depPaths = [];
+  if (showDeps && dependencies && dependencies.length > 0) {
+    for (const dep of dependencies) {
+      const fromIdx = taskIndex.get(dep.from_task_id);
+      const toIdx = taskIndex.get(dep.to_task_id);
+      if (fromIdx === undefined || toIdx === undefined) continue;
+      
+      const fromTask = tasks[fromIdx];
+      const toTask = tasks[toIdx];
+      if (!fromTask || !toTask) continue;
+      if (!fromTask.start_date || !fromTask.end_date || !toTask.start_date || !toTask.end_date) continue;
+      
+      const depType = dep.type || "FS";
+      const isCritical = showCritical && criticalDepIds && criticalDepIds.has(dep.id);
+      
+      // Y positions: center of each bar within the row
+      // Bar top = cell padding(6px) + bar-area margin(4px) = 10px. Bar height = 28px. Center = 10+14 = 24px.
+      const BAR_CENTER_Y = 24;
+      const y1 = fromIdx * ROW_H + BAR_CENTER_Y;
+      const y2 = toIdx * ROW_H + BAR_CENTER_Y;
+      
+      // X positions — align to bar edges
+      // Bar left = barLeft(task.start_date), bar right = barLeft(task.start_date) + barWidth(task.start_date, task.end_date)
+      const fromBarLeft  = barLeft(fromTask.start_date);
+      const fromBarRight = fromBarLeft + barWidth(fromTask.start_date, fromTask.end_date);
+      const toBarLeft    = barLeft(toTask.start_date);
+      const toBarRight   = toBarLeft + barWidth(toTask.start_date, toTask.end_date);
+      
+      // Anchor points on bar edges, with a 2px inset on target side
+      // so the arrow visually touches/sits on the bar
+      let x1, x2;
+      switch (depType) {
+        case "FS":
+          x1 = fromBarRight + 2;
+          x2 = toBarLeft;
+          break;
+        case "SS":
+          x1 = fromBarLeft - 2;
+          x2 = toBarLeft;
+          break;
+        case "FF":
+          x1 = fromBarRight + 2;
+          x2 = toBarRight;
+          break;
+        case "SF":
+          x1 = fromBarLeft - 2;
+          x2 = toBarRight;
+          break;
+        default:
+          x1 = fromBarRight + 2;
+          x2 = toBarLeft;
+      }
+      
+      // Build smooth rounded-corner path with cubic beziers
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      const absDy = Math.abs(dy);
+      const absDx = Math.abs(dx);
+      const R = 6;  // corner radius
+
+      let pathD, sx, sy, ex, ey;
+
+      if (absDy < 5 && dx >= 0) {
+        // Same row, forward: straight line
+        pathD = `M ${x1} ${y1} L ${x2} ${y2}`;
+        sx = x1; sy = y1; ex = x2; ey = y2;
+      } else if (absDy < 5 && dx < 0) {
+        // Same row, backward: go down, across, then up to target bar edge
+        const offsetY = 22;
+        const midY = y1 + offsetY;
+        pathD = `M ${x1} ${y1} `
+              + `L ${x1} ${midY - R} `
+              + `A ${R} ${R} 0 0 1 ${x1 + R} ${midY} `
+              + `L ${x2 - R} ${midY} `
+              + `A ${R} ${R} 0 0 1 ${x2} ${midY + R} `
+              + `L ${x2} ${y2}`;
+        sx = x2; sy = midY + R; ex = x2; ey = y2;
+      } else if (dx >= 0) {
+        // Forward elbow: right → down → right, rounded corners
+        const segH = Math.max(12, Math.min(20, dx * 0.4));
+        const mx = x1 + segH;
+        const goingDown = dy > 0;
+        const ky = goingDown ? 1 : -1;
+        pathD = `M ${x1} ${y1} `
+              + `L ${mx - R} ${y1} `
+              + `A ${R} ${R} 0 0 ${goingDown ? 1 : 0} ${mx} ${y1 + ky * R} `
+              + `L ${mx} ${y2 - ky * R} `
+              + `A ${R} ${R} 0 0 ${goingDown ? 0 : 1} ${mx + R} ${y2} `
+              + `L ${x2} ${y2}`;
+        sx = mx; sy = y2; ex = x2; ey = y2;
+      } else {
+        // Backward elbow: left → down → left, rounded corners
+        const segH = Math.max(15, absDx * 0.3);
+        const mx = x1 - segH;
+        const goingDown = dy > 0;
+        const ky = goingDown ? 1 : -1;
+        pathD = `M ${x1} ${y1} `
+              + `L ${mx + R} ${y1} `
+              + `A ${R} ${R} 0 0 ${goingDown ? 0 : 1} ${mx} ${y1 + ky * R} `
+              + `L ${mx} ${y2 - ky * R} `
+              + `A ${R} ${R} 0 0 ${goingDown ? 1 : 0} ${mx - R} ${y2} `
+              + `L ${x2} ${y2}`;
+        sx = mx; sy = y2; ex = x2; ey = y2;
+      }
+
+depPaths.push({
+        id: dep.id,
+        d: pathD,
+        type: depType,
+        isCritical,
+        x1, y1, x2, y2,
+        sx, sy, ex, ey,  // segment direction for arrowhead
+        fromTask, toTask, dep
+      });
+    }
+  }
+
+  return (
+    <>
+      {/* FIXED CALENDAR HEADER */}
+      <div className="gantt-calendar-fixed">
+        <div className="gantt-calendar-inner" ref={headerScrollRef}>
+          <div style={{minWidth:fullW, position:'relative'}}>
+            <div style={{position:'absolute', left:0, top:0, width:LEFT_W, zIndex:3, background:'var(--surface2)', borderBottom:'2px solid var(--border)'}}>
+              <div className="gantt-header" style={{borderBottom:'none'}}>
+                <div className="gantt-cell task col-resizable" style={{width:colWidths.task}}>Задача<span className="col-resize-handle" onMouseDown={(e) => onResizeMouseDown(e, 'task')}/></div>
+                <div className="gantt-cell desc col-resizable" style={{width:colWidths.desc}}>Описание<span className="col-resize-handle" onMouseDown={(e) => onResizeMouseDown(e, 'desc')}/></div>
+                <div className="gantt-cell assignee col-resizable" style={{width:colWidths.assignee}}>Исполнитель<span className="col-resize-handle" onMouseDown={(e) => onResizeMouseDown(e, 'assignee')}/></div>
+                <div className="gantt-cell dur col-resizable" style={{width:colWidths.dur}}>Дн.<span className="col-resize-handle" onMouseDown={(e) => onResizeMouseDown(e, 'dur')}/></div>
+                <div className="gantt-cell pred" style={{width:colWidths.pred}}>Зависимости</div>
+              </div>
+            </div>
+            <div style={{marginLeft:LEFT_W, width:barAreaW}}>
+              <div className="date-scale">
+                {months.map(mo => (
+                  <div key={mo.key} className="date-scale-month" style={{
+                    left: mo.start * DAY_W,
+                    width: (mo.end - mo.start + 1) * DAY_W,
+                  }}>{mo.label}</div>
+                ))}
+                {dates.map((d, i) => {
+                  const isWE = d.getDay() === 0 || d.getDay() === 6;
+                  return (
+                    <div key={i} className="date-scale-day" style={{
+                      left: i * DAY_W, width: DAY_W,
+                      color: isWE ? 'var(--red)' : undefined,
+                    }}>{d.getDate()}</div>
+                  );
+                })}
+              </div>
+              <div className="gantt-header" style={{borderBottom:'2px solid var(--border)'}}>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* SCROLLABLE BODY */}
+      <div className="gantt-scroll" ref={bodyScrollRef}>
+        <div className="gantt-body" style={{minWidth:fullW, position:'relative'}}>
+
+          {tasks.map(t => {
+            const bl = t.start_date ? barLeft(t.start_date) : 0;
+            const bw = t.start_date ? barWidth(t.start_date, t.end_date) : DAY_W;
+            const sel = selectedId === t.id;
+            const isCrit = false;
+            const isCompleted = !!t.completed;
+            
+            // Count dependencies for display
+            const incomingDeps = dependencies ? dependencies.filter(d => d.to_task_id === t.id) : [];
+            const depDisplay = incomingDeps.length > 0 
+              ? incomingDeps.map(d => {
+                  const from = tasks.find(tt => tt.id === d.from_task_id);
+                  const label = d.type === 'SS' ? 'одновр.' : '→';
+                  return `${from ? from.task.slice(0,8)+(from.task.length>8?'…':'') : d.from_task_id} ${label}`;
+                }).join(', ')
+              : '—';
+            
+            return (
+              <div key={t.id} className={'gantt-row' + (sel ? ' selected' : '')} onClick={() => onSelect(t)}>
+                <div className="gantt-cell task col-resizable" style={{width:colWidths.task}} title={t.task}>{t.task}</div>
+                <div className="gantt-cell desc col-resizable" style={{width:colWidths.desc}} title={t.description}><span className="cell-text-clip">{t.description}</span></div>
+                <div className="gantt-cell assignee col-resizable" style={{width:colWidths.assignee}}>
+                  {t.assignee ? <span className="badge">{t.assignee}</span> : '—'}
+                </div>
+                <div className="gantt-cell dur col-resizable" style={{width:colWidths.dur}}>{t.duration}</div>
+                <div className="gantt-cell pred" style={{width:colWidths.pred}} title={depDisplay}>{depDisplay}</div>
+                <div className="gantt-cell bar-cell">
+                  <div className="bar-area" style={{width: barAreaW}}>
+                    {todayLeft >= 0 && todayLeft <= barAreaW && <div className="today-marker" style={{left: todayLeft}} title={'Сегодня, ' + new Date(TODAY_DATE).toLocaleDateString('ru', {day:'numeric', month:'long', year:'numeric'})} />}
+                    {dates.map((_, i) => (
+                      <div key={'g'+i} className="grid-v" style={{left: i * DAY_W}} />
+                    ))}
+                    <div className={'gantt-bar' + (isCrit ? ' critical' : '')} style={{
+                      left: bl, width: Math.max(bw, 6),
+                      background: isCompleted ? '#9aa0a6' : (t.color || 'var(--accent)'),
+                      opacity: isCompleted ? 0.82 : 1,
+                    }} title={t.task + ': ' + t.start_date + ' → ' + t.end_date + (isCrit ? ' [КРИТ. ПУТЬ]' : '')}>
+                      {bw > 50 ? t.task : ''}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+// TASK MODAL — with dependency management
+// ════════════════════════════════════════════════════════════════════
+
+function TaskModal({ task, allTasks, dependencies, onClose, onSave, onDelete, onComplete, onDepsChange }) {
+  const [form, setForm] = useState({...task});
+  const [confirmDel, setConfirmDel] = useState(false);
+  const [newDepType, setNewDepType] = useState("FS");
+  const [newDepTo, setNewDepTo] = useState("");
+
+  useEffect(() => {
+    const t = {...task};
+    if (!t.links && t.link) t.links = [t.link];
+    if (!t.links) t.links = [];
+    setForm(t);
+    setConfirmDel(false);
+  }, [task]);
+
+  const save = () => {
+    onSave({ ...form, duration: Math.max(1, parseInt(form.duration) || 1) });
+  };
+  const del = () => {
+    if (confirmDel) onDelete(task.id);
+    else setConfirmDel(true);
+  };
+
+  // All dependencies involving this task (incoming + outgoing)
+  const allDeps = dependencies.filter(d => d.to_task_id === task.id || d.from_task_id === task.id);
+  const incomingDeps = dependencies.filter(d => d.to_task_id === task.id);
+  const outgoingDeps = dependencies.filter(d => d.from_task_id === task.id);
+
+  // For adding: available tasks = all tasks except self and not already linked
+  const linkedIds = new Set(allDeps.flatMap(d => [d.from_task_id, d.to_task_id]));
+  const availableForLink = allTasks.filter(t => t.id !== task.id && !linkedIds.has(t.id));
+
+  const addDep = () => {
+    if (!newDepTo) return;
+    const depId = genDepId(dependencies);
+    let dep;
+    if (newDepType === 'FS') {
+      // Предшествует: текущая → выбранная (outgoing FS)
+      dep = { id: depId, from_task_id: task.id, to_task_id: newDepTo, type: 'FS', lag_days: 0 };
+    } else if (newDepType === 'SF') {
+      // Следует: выбранная → текущая (incoming FS)
+      dep = { id: depId, from_task_id: newDepTo, to_task_id: task.id, type: 'FS', lag_days: 0 };
+    } else {
+      // Одновременно: выбранная → текущая (SS)
+      dep = { id: depId, from_task_id: newDepTo, to_task_id: task.id, type: 'SS', lag_days: 0 };
+    }
+    onDepsChange([...dependencies, dep]);
+    setNewDepTo("");
+    setNewDepType("FS");
+  };
+
+  const removeDep = (depId) => {
+    onDepsChange(dependencies.filter(d => d.id !== depId));
+  };
+
+  // Format dependency for display
+  const formatDep = (d) => {
+    const otherId = d.to_task_id === task.id ? d.from_task_id : d.to_task_id;
+    const other = allTasks.find(t => t.id === otherId);
+    const otherName = other ? other.task : otherId;
+    if (d.to_task_id === task.id) {
+      // This task is the target (incoming)
+      if (d.type === 'SS') return { label: 'Одновременно с', name: otherName, arrow: '⇄' };
+      return { label: 'Следует за', name: otherName, arrow: '←' };
+    } else {
+      // This task is the source (outgoing)
+      return { label: 'Предшествует', name: otherName, arrow: '→' };
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <span>✏️ Редактирование задачи</span>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          <div className="form-row">
+            <div className="form-group" style={{flex:2}}>
+              <label>Название</label>
+              <input value={form.task||''} onChange={e => setForm({...form, task: e.target.value})}/>
+            </div>
+          </div>
+          <div className="form-group">
+            <label>Описание</label>
+            <textarea value={form.description||''} onChange={e => setForm({...form, description: e.target.value})}/>
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label>Исполнитель</label>
+              <select value={form.assignee||''} onChange={e => setForm({...form, assignee: e.target.value})}>
+                <option value="">— Не назначен —</option>
+                {['Анна','Игорь','Диана','Алексей','Елена'].map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Длительность (дни)</label>
+              <input type="number" min="1" max="365" value={form.duration||1} onChange={e => setForm({...form, duration: e.target.value})}/>
+            </div>
+          </div>
+          
+          {/* Dependencies section */}
+          <div className="form-group">
+            <label>Зависимости</label>
+            {allDeps.length > 0 ? (
+              <div className="dep-list">
+                {allDeps.map(d => {
+                  const info = formatDep(d);
+                  return (
+                    <div key={d.id} className="dep-item">
+                      <span className="dep-arrow-symbol">{info.arrow}</span>
+                      <span style={{color:'var(--text2)',fontSize:'0.72rem',marginRight:4}}>{info.label}</span>
+                      <span>{info.name}</span>
+                      <button className="dep-remove" onClick={() => removeDep(d.id)} title="Удалить связь">✕</button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : <div style={{fontSize:'0.75rem',color:'var(--text2)'}}>Нет зависимостей</div>}
+            
+            {/* Add dependency */}
+            {availableForLink.length > 0 && (
+              <div className="dep-add-row" style={{marginTop:8}}>
+                <select value={newDepType} onChange={e => setNewDepType(e.target.value)} style={{width:'auto',flex:'none'}}>
+                  {DEP_TYPES.map(t => <option key={t} value={t}>{DEP_TYPE_LABELS[t]}</option>)}
+                </select>
+                <select value={newDepTo} onChange={e => setNewDepTo(e.target.value)}>
+                  <option value="">— Задача —</option>
+                  {availableForLink.map(t => <option key={t.id} value={t.id}>{t.task}</option>)}
+                </select>
+                <button className="btn btn-xs btn-primary" onClick={addDep} disabled={!newDepTo}>OK</button>
+              </div>
+            )}
+          </div>
+          
+          {/* Links section */}
+          <div className="form-group">
+            <label>Ссылка на задачу</label>
+            <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+              {(form.links || []).map((link, idx) => (
+                <span key={idx} style={{display:'inline-flex',alignItems:'center',gap:3,fontSize:'0.78rem',
+                                        background:'var(--surface2)',padding:'3px 6px 3px 8px',borderRadius:4,
+                                        border:'1px solid var(--border)'}}>
+                  <a href={link} target="_blank" rel="noopener noreferrer" 
+                     style={{color:'var(--accent2)',textDecoration:'none'}}
+                     title={link}>
+                    🔗 {link.length > 30 ? link.slice(0,30)+'…' : link}
+                  </a>
+                  <button onClick={() => {
+                    const newLinks = [...(form.links || [])];
+                    newLinks.splice(idx, 1);
+                    setForm({...form, links: newLinks});
+                  }} style={{background:'none',border:'none',color:'var(--red)',cursor:'pointer',fontSize:'0.85rem',lineHeight:1,padding:'0 2px',marginLeft:2}}
+                  title="Удалить ссылку">✕</button>
+                </span>
+              ))}
+              <button className="btn btn-xs" style={{fontSize:'0.75rem',padding:'3px 8px'}} 
+                      onClick={() => {
+                        const url = prompt('Введите ссылку:');
+                        if (url && url.trim()) {
+                          setForm({...form, links: [...(form.links || []), url.trim()]});
+                        }
+                      }}>+</button>
+            </div>
+          </div>
+          
+          <div className="form-row">
+            <div className="form-group">
+              <label>Дата начала {form.manual_start ? <span style={{color:'var(--yellow)',fontWeight:400,textTransform:'none',fontSize:'0.7rem'}}>(вручную)</span> : <span style={{color:'var(--text2)',fontWeight:400,textTransform:'none'}}>(авто)</span>}</label>
+              <input type="date" value={form.start_date || ''} onChange={e => setForm({...form, start_date: e.target.value, manual_start: true})}/>
+              {form.manual_start && <button className="btn btn-sm" style={{marginTop:4,fontSize:'0.7rem'}} onClick={() => setForm({...form, manual_start: false})}>🔄 Вернуть авто-расчёт</button>}
+            </div>
+            <div className="form-group">
+              <label>Дата окончания (расчётная)</label>
+              <input value={form.end_date || '—'} disabled style={{opacity:0.6}}/>
+            </div>
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-danger" onClick={del}>
+            {confirmDel ? 'Подтвердить удаление' : 'Удалить'}
+          </button>
+          <button className="btn btn-primary" onClick={() => onComplete(task.id)} style={{background: '#4CAF50', borderColor: '#4CAF50'}}>
+            {task.completed ? 'Вернуть в работу' : 'Выполнено'}
+          </button>
+          <div style={{flex:1}}/>
+          <button className="btn btn-primary" onClick={save}>Сохранить</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+// CHAT PANEL
+// ════════════════════════════════════════════════════════════════════
+
+function ChatPanel({ tasks, dependencies, onPlanUpdate }) {
+  const [msgs, setMsgs] = useState([{
+    type:'agent',
+    text:'👋 Привет! Я AI-агент, я не умею делать кофе, но могу работать с задачами:\n\n• Добавить\n• Перенести\n• Удалить\n• Связать с типом зависимости\n• Назначить\n• Отметь задачу выполненной\n\nНапиши что ты хочешь, я всё пойму (прямо как твой психолог) 😄'
+  }]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const endRef = useRef(null);
+
+  useEffect(() => { endRef.current?.scrollIntoView({behavior:'smooth'}); }, [msgs]);
+
+  const send = useCallback(async (text) => {
+    const msg = (text || input).trim();
+    if (!msg || loading) return;
+
+    setMsgs(prev => [...prev, {type:'user',text:msg}]);
+    setInput('');
+    setLoading(true);
+
+    try {
+      // Call FastAPI backend with MCP + LLM
+      const API_URL = (typeof window !== 'undefined' && window.__GANTT_API_URL__) || 'http://localhost:8000';
+      const response = await fetch(API_URL + '/api/chat', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({message: msg, tasks, dependencies})
+      });
+      
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || `HTTP ${response.status}`);
+      }
+      
+      const result = await response.json();
+      setMsgs(prev => [...prev, {type:'agent',text:result.reply}]);
+      if (result.tasks || result.dependencies) {
+        onPlanUpdate(result.tasks || null, result.dependencies || null);
+      }
+    } catch (err) {
+      // Fallback to local NLP if backend is unreachable
+      console.warn('Backend unreachable, using local fallback:', err.message);
+      try {
+        const result = aiProcessCommand(msg, tasks, dependencies);
+        setMsgs(prev => [...prev, {type:'agent',text:'⚠️ Локальный режим (бэкенд недоступен):\n' + result.reply}]);
+        if (result.tasks || result.dependencies) {
+          onPlanUpdate(result.tasks, result.dependencies);
+        }
+      } catch (fallbackErr) {
+        setMsgs(prev => [...prev, {type:'agent',text:'❌ Ошибка: ' + err.message}]);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [input, loading, tasks, dependencies, onPlanUpdate]);
+
+  const suggestions = [
+    'Помощь',
+    'Добавь задачу «Ревью кода» на 2 дня, исполнитель Елена',
+    'Перенеси Анализ требований на 5 дней',
+    'Назначь Разработку бэкенда на Диану',
+    'Свяжи Разработку фронтенда с Проектированием архитектуры, тип SS',
+  ];
+
+  const handleSuggestion = useCallback((s) => {
+    if (s === 'Помощь') {
+      send(s);
+    } else {
+      setInput(s);
+    }
+  }, [send]);
+
+  return (
+    <div className="chat-panel">
+      <div className="chat-header">
+        <span className="dot"></span> AI Агент — Чат
+      </div>
+      <div className="chat-msgs">
+        {msgs.map((m,i) => (
+          <div key={i} className={`chat-msg ${m.type}`}>
+            <div className="avatar">{m.type==='agent' ? '🤖' : '👤'}</div>
+            <div className="bubble" dangerouslySetInnerHTML={{
+              __html: m.text
+                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\n/g, '<br/>')
+                .replace(/`(.+?)`/g, '<code>$1</code>')
+            }}/>
+          </div>
+        ))}
+        {loading && (
+          <div className="chat-msg agent">
+            <div className="avatar">🤖</div>
+            <div className="bubble loading">Обрабатываю...</div>
+          </div>
+        )}
+        <div ref={endRef}/>
+      </div>
+      <div className="chat-input-area">
+        <div className="chat-input-row">
+          <input
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => e.key==='Enter' && send()}
+            placeholder="Опишите изменение плана..."
+            disabled={loading}
+          />
+          <button className="chat-send" onClick={() => send()} disabled={loading}>▶</button>
+        </div>
+        <div className="suggestions">
+          {suggestions.map((s,i) => (
+            <button key={i} className="suggestion" onClick={() => handleSuggestion(s)}>
+              {s.length > 38 ? s.slice(0,38)+'...' : s}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+// CONFETTI COMPONENT
+// ════════════════════════════════════════════════════════════════════
+
+function ConfettiOverlay() {
+  const pieces = useMemo(() => {
+    const colors = ['#00b894','#6c5ce7','#fdcb6e','#e17055','#4a90d9','#e84393','#55efc4','#ff7675','#74b9ff','#a29bfe'];
+    return Array.from({length: 30}, (_, i) => ({
+      id: i,
+      left: 20 + Math.random() * 200,
+      color: colors[i % colors.length],
+      delay: Math.random() * 0.8,
+      size: 6 + Math.random() * 8,
+    }));
+  }, []);
+  return (
+    <div className="confetti-overlay">
+      <div className="confetti-congrats fadeout" style={{position:'relative',marginBottom:10}}>
+        🎉 Проект готов! Можно выдохнуть!
+      </div>
+      <div style={{position:'relative',width:240,height:150}}>
+        {pieces.map(p => (
+          <div key={p.id} className="confetti-piece" style={{
+            left: p.left,
+            top: -10,
+            width: p.size,
+            height: p.size * 0.6,
+            background: p.color,
+            animationDelay: p.delay + 's',
+            borderRadius: Math.random() > 0.5 ? '50%' : '2px',
+          }} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+// MAIN APP
+// ════════════════════════════════════════════════════════════════════
+
+function App() {
+  const [rawTasks, setRawTasks] = useState(() => SEED_TASKS.map(t => ({...t})));
+  const [deps, setDeps] = useState(() => SEED_DEPENDENCIES.map(d => ({...d})));
+  const [projectName, setProjectName] = useState('Новый проект');
+  const [projectStart, setProjectStart] = useState(() => {
+    const starts = SEED_TASKS.map(t => t.start_date).filter(Boolean).sort();
+    return starts[0] || new Date().toISOString().slice(0,10);
+  });
+  const [theme, setTheme] = useState(() => (typeof localStorage !== 'undefined' && localStorage.getItem('gantt-theme')) || 'dark');
+  useEffect(() => {
+    document.body.classList.toggle('light-theme', theme === 'light');
+    if (typeof localStorage !== 'undefined') localStorage.setItem('gantt-theme', theme);
+  }, [theme]);
+  const [selectedTask, setSelectedTask] = useState(null);
+  const [executorFilter, setExecutorFilter] = useState(null);
+  const [showDeps, setShowDeps] = useState(true);
+  const [showCritical, setShowCritical] = useState(false);
+  const [toast, setToast] = useState(null);
+  // Прогресс проекта рассчитывается автоматически: доля выполненных задач.
+  const [showConfetti, setShowConfetti] = useState(false);
+  const confettiTimerRef = useRef(null);
+  const fileRef = useRef(null);
+
+  const tasks = useMemo(() => computeSchedule(rawTasks, deps, projectStart), [rawTasks, deps, projectStart]);
+  
+  // Compute expected project end date — latest end_date among all tasks
+  // Реальная дата старта проекта = дата самой ранней задачи
+  const projectActualStart = useMemo(() => {
+    const starts = tasks.map(t => t.start_date).filter(Boolean);
+    if (starts.length === 0) return projectStart;
+    return starts.reduce((earliest, cur) => cur < earliest ? cur : earliest, starts[0]);
+  }, [tasks, projectStart]);
+
+  const projectEnd = useMemo(() => {
+    const ends = tasks.map(t => t.end_date).filter(Boolean);
+    if (ends.length === 0) return projectStart;
+    return ends.reduce((latest, cur) => cur > latest ? cur : latest, ends[0]);
+  }, [tasks, projectStart]);
+  
+  const { criticalIds, criticalDepIds } = useMemo(() => computeCriticalPath(tasks, deps), [tasks, deps]);
+
+  const filteredTasks = useMemo(() => {
+    if (!executorFilter) return tasks;
+    return tasks.filter(t => t.assignee === executorFilter);
+  }, [tasks, executorFilter]);
+
+  const displayedTasks = executorFilter ? filteredTasks : tasks;
+
+  const showToast = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const handlePlanUpdate = useCallback((newRaw, newDeps) => {
+    if (newRaw) setRawTasks(newRaw);
+    if (newDeps) setDeps(newDeps);
+    if (newRaw || newDeps) showToast('✅ План обновлён');
+  }, []);
+
+  const handleSaveTask = useCallback((updated) => {
+    setRawTasks(prev => prev.map(t => t.id === updated.id ? updated : t));
+    setSelectedTask(null);
+    showToast('✅ Задача сохранена');
+  }, []);
+
+  const handleCompleteTask = useCallback((id) => {
+    setRawTasks(prev => prev.map(t => t.id === id ? {...t, completed: !t.completed} : t));
+    setSelectedTask(null);
+    showToast('✅ Статус задачи изменён');
+  }, []);
+
+  const handleDeleteTask = useCallback((id) => {
+    setRawTasks(prev => prev.filter(t => t.id !== id));
+    setDeps(prev => prev.filter(d => d.from_task_id !== id && d.to_task_id !== id));
+    setSelectedTask(null);
+    showToast('🗑️ Задача удалена');
+  }, []);
+
+  const handleDepsChange = useCallback((newDeps) => {
+    setDeps(newDeps);
+  }, []);
+
+  const handleExport = useCallback(() => {
+    const data = [
+      ['Задача','Описание','Исполнитель','Длительность (дни)','Зависимости','Начало','Конец'],
+      ...tasks.map(t => {
+        const taskDeps = deps.filter(d => d.to_task_id === t.id);
+        const depStr = taskDeps.map(d => {
+          const from = tasks.find(tt => tt.id === d.from_task_id);
+          return `${from ? from.task : d.from_task_id} (${d.type}${d.lag_days > 0 ? '+' + d.lag_days : ''})`;
+        }).join('; ');
+        return [t.task, t.description||'', t.assignee||'', t.duration, depStr||'', t.start_date||'', t.end_date||''];
+      }),
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    ws['!cols'] = [{wch:28},{wch:40},{wch:18},{wch:18},{wch:40},{wch:14},{wch:14}];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'План проекта');
+    XLSX.writeFile(wb, 'plan.xlsx');
+    showToast('📥 План экспортирован в plan.xlsx');
+  }, [tasks, deps]);
+
+  const handleImport = useCallback((e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const wb = XLSX.read(ev.target.result, {type:'array'});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, {header:1});
+        if (!rows || rows.length < 2) { showToast('❌ Файл пуст'); return; }
+        const imported = [];
+        // Track predecessor names for second pass
+        const predRefs = [];
+        for (let i = 1; i < rows.length; i++) {
+          const r = rows[i];
+          if (!r[0]) continue;
+          const predRaw = r[4] ? String(r[4]).trim() : '';
+          imported.push({
+            id: genNextId(imported),
+            task: String(r[0]).trim(),
+            description: r[1] ? String(r[1]).trim() : '',
+            assignee: r[2] ? String(r[2]).trim() : '',
+            duration: parseInt(r[3]) || 3,
+            color: COLORS[(i - 1) % COLORS.length],
+          });
+          predRefs.push(predRaw);
+        }
+        // Second pass: create dependencies from predecessor names
+        const importedDeps = [];
+        let depCounter = 1;
+        imported.forEach((task, idx) => {
+          const raw = predRefs[idx];
+          if (!raw) return;
+          // Split by ; or , or newline
+          const names = raw.split(/[;,，\n]+/).map(s => s.trim()).filter(Boolean);
+          names.forEach(name => {
+            // Find predecessor task by name (case-insensitive)
+            const pred = imported.find(t => t.task.toLowerCase() === name.toLowerCase());
+            if (pred && pred.id !== task.id) {
+              // Avoid duplicate
+              const exists = importedDeps.some(d =>
+                d.from_task_id === pred.id && d.to_task_id === task.id
+              );
+              if (!exists) {
+                importedDeps.push({
+                  id: 'import_dep' + (depCounter++),
+                  from_task_id: pred.id,
+                  to_task_id: task.id,
+                  type: 'FS',
+                  lag_days: 0,
+                });
+              }
+            }
+          });
+        });
+        if (imported.length > 0) {
+          setRawTasks(imported);
+          setDeps(importedDeps);
+          showToast(`📤 Импортировано ${imported.length} задач, ${importedDeps.length} связей`);
+        } else {
+          showToast('❌ Не найдено задач в файле');
+        }
+      } catch (err) {
+        showToast('❌ Ошибка чтения файла. Проверьте формат.');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+    if (fileRef.current) fileRef.current.value = '';
+  }, []);
+
+  const handleReset = useCallback(() => {
+    setRawTasks(SEED_TASKS.map(t => ({...t})));
+    setDeps(SEED_DEPENDENCIES.map(d => ({...d})));
+    setSelectedTask(null);
+    showToast('🔄 План сброшен к тестовым данным');
+  }, []);
+
+  const totalDur = displayedTasks.reduce((s,t) => s + (t.duration||0), 0);
+  const completedTasksCount = rawTasks.filter(t => !!t.completed).length;
+  const projectProgressPct = rawTasks.length > 0
+    ? Math.round((completedTasksCount / rawTasks.length) * 100)
+    : 0;
+  const assignees = [...new Set(tasks.map(t => t.assignee).filter(Boolean))];
+  
+  // Confetti trigger when 100% completed
+  useEffect(() => {
+    if (projectProgressPct >= 100 && rawTasks.length > 0) {
+      setShowConfetti(true);
+      if (confettiTimerRef.current) clearTimeout(confettiTimerRef.current);
+      confettiTimerRef.current = setTimeout(() => setShowConfetti(false), 10000);
+    }
+    return () => { if (confettiTimerRef.current) clearTimeout(confettiTimerRef.current); };
+  }, [projectProgressPct, rawTasks.length]);
+  
+  return (
+    <>
+      <div className="header">
+        <div style={{display:'flex',alignItems:'center',gap:10}}>
+          <h1>📊 Gantt Plan Editor</h1>
+          <span style={{fontSize:'0.7rem',color:'var(--text2)',background:'var(--surface2)',padding:'2px 8px',borderRadius:10}}>AI-Native</span>
+        </div>
+        <div className="header-actions">
+          <div className="theme-switcher" title="Тема оформления">
+            <button className={'theme-btn' + (theme === 'dark' ? ' active' : '')} onClick={() => setTheme('dark')}>◐ Чёрная</button>
+            <button className={'theme-btn' + (theme === 'light' ? ' active' : '')} onClick={() => setTheme('light')}>○ Белая</button>
+          </div>
+          <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{display:'none'}} onChange={handleImport}/>
+          <button className="btn btn-sm" onClick={() => fileRef.current?.click()}>📤 Импорт Excel</button>
+          <button className="btn btn-primary btn-sm" onClick={handleExport}>📥 Экспорт Excel</button>
+        </div>
+      </div>
+
+      <div className="main">
+        <div className="gantt-panel">
+          <div className="gantt-toolbar">
+            <input className="project-name-input" value={projectName} onChange={e => setProjectName(e.target.value)} placeholder="Название проекта" />
+            <span style={{color:'var(--text2)',fontSize:'0.78rem',display:'flex',alignItems:'center',gap:4}}>
+              Выполнено: <strong>{projectProgressPct}%</strong>
+            </span>
+            <span style={{marginLeft:'auto',color:'var(--text2)',fontSize:'0.78rem'}}>Старт: <strong>{projectActualStart}</strong></span>
+            <span style={{color:'var(--text2)',fontSize:'0.78rem'}}>Финиш: <strong>{projectEnd}</strong></span>
+          </div>
+          <GanttChart 
+            tasks={displayedTasks} 
+            dependencies={deps}
+            projectStart={projectStart} 
+            selectedId={selectedTask?.id} 
+            onSelect={setSelectedTask}
+            showDeps={showDeps}
+            showCritical={showCritical}
+            criticalIds={criticalIds}
+            criticalDepIds={criticalDepIds}
+          />
+          <div className="stats">
+            <span>👥 Исполнители:</span>
+            {assignees.map(a => (
+              <span key={a} className={'badge' + (executorFilter === a ? ' active' : '')}
+                onClick={() => setExecutorFilter(executorFilter === a ? null : a)}
+                title={executorFilter === a ? 'Показать все задачи' : 'Показать только задачи ' + a}>
+                {a}
+              </span>
+            ))}
+            {executorFilter && <button className="btn btn-sm" style={{marginLeft:8}} onClick={() => setExecutorFilter(null)}>✕ Показать все</button>}
+            <span style={{marginLeft:'auto'}}>
+              {rawTasks.length} задач · {deps.length} связей · {totalDur} дн. · {assignees.length} исп.
+            </span>
+          </div>
+        </div>
+
+        <ChatPanel tasks={rawTasks} dependencies={deps} onPlanUpdate={handlePlanUpdate}/>
+      </div>
+
+      {selectedTask && (
+        <TaskModal
+          task={selectedTask}
+          allTasks={tasks}
+          dependencies={deps}
+          onClose={() => setSelectedTask(null)}
+          onSave={handleSaveTask}
+          onDelete={handleDeleteTask}
+          onComplete={handleCompleteTask}
+          onDepsChange={handleDepsChange}
+        />
+      )}
+      {toast && <div className="toast">{toast}</div>}
+      {showConfetti && <ConfettiOverlay />}
+    </>
+  );
+}
+
+  // Configure backend API URL
+  // Для локальной разработки используйте http://localhost:8000
+  // Для деплоя на Render замените на: https://gantt-plan-editor-api.onrender.com
+  window.__GANTT_API_URL__ = 'http://localhost:8000';
+  
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
