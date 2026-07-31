@@ -42,6 +42,9 @@ logger = logging.getLogger("gantt")
 
 client = OpenAI(base_url=OPENROUTER_BASE_URL, api_key=OPENROUTER_API_KEY)
 
+# Serve Vite build (frontend/dist/) or fallback to single HTML
+FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "frontend", "dist")
+FRONTEND_INDEX = os.path.join(FRONTEND_DIR, "index.html")
 FRONTEND_FILE = "gantt_editor_final.html"
 
 # App
@@ -307,11 +310,27 @@ async def chat(req: ChatRequest):
 
     return ChatResponse(reply=raw)
 
-@app.get("/")
-async def serve():
+@app.get("/{path:path}")
+async def serve_spa(path: str):
+    # First, try API routes - skip for known paths
+    file_path = os.path.join(FRONTEND_DIR, path) if FRONTEND_DIR and os.path.exists(FRONTEND_DIR) else None
+    if file_path and os.path.isfile(file_path):
+        return FileResponse(file_path)
+    # Serve index.html (SPA routing)
+    if os.path.exists(FRONTEND_INDEX):
+        return FileResponse(FRONTEND_INDEX, media_type="text/html")
+    # Fallback to old single-file HTML
     if os.path.exists(FRONTEND_FILE):
-        return FileResponse(FRONTEND_FILE)
-    return {"error": FRONTEND_FILE + " not found"}
+        return FileResponse(FRONTEND_FILE, media_type="text/html")
+    return {"error": "No frontend found"}
+
+@app.get("/")
+async def serve_root():
+    if os.path.exists(FRONTEND_INDEX):
+        return FileResponse(FRONTEND_INDEX, media_type="text/html")
+    if os.path.exists(FRONTEND_FILE):
+        return FileResponse(FRONTEND_FILE, media_type="text/html")
+    return {"error": "No frontend found"}
 
 if __name__ == "__main__":
     import uvicorn
